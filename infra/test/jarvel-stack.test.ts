@@ -1,8 +1,14 @@
 import { App } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { createApp, DEFAULT_MODEL_ID } from '../lib/app.js';
-import { BUDGET_ALERT_USD, bedrockModelArns, JarvelStack, MONTHLY_BUDGET_USD } from '../lib/jarvel-stack.js';
+import { createApp, DEFAULT_ANTHROPIC_MODEL_ID, DEFAULT_MODEL_ID } from '../lib/app.js';
+import {
+  anthropicKeyParameterName,
+  BUDGET_ALERT_USD,
+  bedrockModelArns,
+  JarvelStack,
+  MONTHLY_BUDGET_USD,
+} from '../lib/jarvel-stack.js';
 
 // Skip esbuild bundling: these tests check the template, not the Lambda bundles.
 const NO_BUNDLING = { 'aws:cdk:bundling-stacks': [] };
@@ -94,7 +100,14 @@ describe('JarvelStack (staging)', () => {
     template.allResourcesProperties('AWS::Logs::LogGroup', { RetentionInDays: 14 });
     template.hasResourceProperties('AWS::Lambda::Function', {
       Timeout: 300,
-      Environment: { Variables: Match.objectLike({ MODEL_ID: DEFAULT_MODEL_ID, STAGE: 'staging' }) },
+      Environment: {
+        Variables: Match.objectLike({
+          AI_PROVIDER: 'bedrock',
+          MODEL_ID: DEFAULT_MODEL_ID,
+          STAGE: 'staging',
+          ANTHROPIC_KEY_PARAMETER: Match.absent(),
+        }),
+      },
     });
     template.hasResourceProperties('AWS::Lambda::EventInvokeConfig', { MaximumRetryAttempts: 0 });
   });
@@ -174,7 +187,58 @@ describe('JarvelStack (staging)', () => {
   });
 });
 
+describe('JarvelStack with the Anthropic API (aiProvider=anthropic)', () => {
+  let template: Template;
+  beforeAll(() => {
+    ({ template } = synth({ stage: 'staging', alertEmail: 'admin@example.com', aiProvider: 'anthropic' }));
+  });
+
+  it('tells the planner the provider, the Anthropic model and the name of the key parameter, never the key', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Timeout: 300,
+      Environment: {
+        Variables: Match.objectLike({
+          AI_PROVIDER: 'anthropic',
+          MODEL_ID: DEFAULT_ANTHROPIC_MODEL_ID,
+          ANTHROPIC_KEY_PARAMETER: '/jarvel/staging/anthropic-api-key',
+        }),
+      },
+    });
+    expect(anthropicKeyParameterName('prod')).toBe('/jarvel/prod/anthropic-api-key');
+    template.resourceCountIs('AWS::SSM::Parameter', 0);
+    expect(JSON.stringify(template.toJSON())).not.toMatch(/sk-ant/);
+  });
+
+  it('lets the planner read only that one parameter, and no Bedrock model (NFR4)', () => {
+    const all = statements(template);
+    expect(all.some((statement) => asList(statement.Action).some((action) => action.startsWith('bedrock:')))).toBe(
+      false,
+    );
+    const ssm = all.filter((statement) => asList(statement.Action).some((action) => action.startsWith('ssm:')));
+    expect(ssm).toHaveLength(1);
+    expect(asList(ssm[0]!.Action)).toEqual(['ssm:GetParameter']);
+    const resource = JSON.stringify(ssm[0]!.Resource);
+    expect(resource).toContain('arn:aws:ssm:us-east-1:');
+    expect(resource).toContain(':parameter/jarvel/staging/anthropic-api-key');
+    expect(resource).not.toContain('*');
+    expect(all.some((statement) => asList(statement.Action).some((action) => action.startsWith('kms:')))).toBe(false);
+  });
+});
+
 describe('context checks', () => {
+  it('refuses an unknown provider, and a model id that belongs to the other provider', () => {
+    const base = { stage: 'staging', alertEmail: 'admin@example.com' };
+    expect(() => synth({ ...base, aiProvider: 'openai' })).toThrow(/aiProvider must be one of: bedrock, anthropic/);
+    expect(() => synth({ ...base, aiProvider: 'anthropic', modelId: DEFAULT_MODEL_ID })).toThrow(
+      /not a model id for aiProvider anthropic/,
+    );
+    expect(() => synth({ ...base, modelId: 'claude-haiku-4-5' })).toThrow(/not a model id for aiProvider bedrock/);
+    const { template } = synth({ ...base, aiProvider: 'anthropic', modelId: 'claude-haiku-5-5' });
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      Environment: { Variables: Match.objectLike({ MODEL_ID: 'claude-haiku-5-5' }) },
+    });
+  });
+
   it('fails fast when alertEmail or stage is missing or wrong', () => {
     expect(() => synth({ stage: 'staging' })).toThrow(/alertEmail/);
     expect(() => synth({ stage: 'dev', alertEmail: 'admin@example.com' })).toThrow(

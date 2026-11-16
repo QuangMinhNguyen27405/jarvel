@@ -6,8 +6,8 @@ stop is inside the place's opening hours, and the plan follows fixed safety rule
 
 It has two parts:
 
-- **An invite-only API** on AWS: API Gateway, Cognito sign-in, two Lambda functions, DynamoDB and one Amazon Bedrock
-  call per plan.
+- **An invite-only API** on AWS: API Gateway, Cognito sign-in, two Lambda functions, DynamoDB and one AI call per
+  plan, to the Anthropic API or to Amazon Bedrock (`backend/README.md`, "AI provider").
 - **A web app** (React) that signs you in, takes the trip details and shows each day of the plan on a map.
 
 > **The Boston data is a SAMPLE.** The places, opening hours, subway data and safety areas in `backend/src/data/` are
@@ -54,7 +54,7 @@ The local server must never be deployed, because it has no real sign-in. The set
 ## How a plan is built
 
 1. `POST /plans` checks the request, counts it against your **3 plans per calendar month** and answers `202` at once.
-2. The planner function makes one Bedrock call. The AI only chooses which places go on which day and in what order.
+2. The planner function makes one AI call. The AI only chooses which places go on which day and in what order.
 3. Fixed code sets the times, routes each leg over the stored subway network, and applies the opening-hours and
    safety rules.
 4. A final check refuses any plan that breaks a rule. A refused or failed plan gives its monthly count back.
@@ -99,7 +99,8 @@ Run these from the repository root.
 
 ## Tests
 
-- The automated tests make **no AWS or AI calls**. DynamoDB, Lambda, Cognito and Bedrock are all faked.
+- The automated tests make **no AWS or AI calls**. DynamoDB, Lambda, Cognito, Parameter Store, Bedrock and the
+  Anthropic API are all faked.
 - `backend` and `infra` fail below **80% line coverage**. The local server script is left out of the coverage
   count. Coverage reports go to `coverage/`, which git ignores.
 - The only check against real AWS is the short

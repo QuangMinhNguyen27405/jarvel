@@ -1,8 +1,9 @@
 # Jarvel backend
 
 The Boston trip-planning API: an HTTP API on API Gateway with Cognito sign-in, `ApiFn` for every route and
-`PlannerFn` for building plans with Amazon Bedrock. The infrastructure is in `../infra` (AWS CDK) and the shared
-types are in `../shared` (`@jarvel/shared`).
+`PlannerFn` for building plans with one AI call, to the Anthropic API or to Amazon Bedrock (see
+[AI provider](#ai-provider)). The infrastructure is in `../infra` (AWS CDK) and the shared types are in `../shared`
+(`@jarvel/shared`).
 
 > **The Boston data in `src/data/` is a SAMPLE.** It is marked `sample: true`, every place is `verified: false`, and
 > the safety areas are placeholders. It exists so the tests and the first deploy have something to run on. It is
@@ -27,8 +28,8 @@ Run these from the repository root.
 | `npm run synth`                  | Validates the data, then synthesizes the CDK stack (needs `-c alertEmail=...`, see Deploying).    |
 | `npm run dev -w @jarvel/backend` | Runs the API locally on `http://localhost:8787` with no AWS (see Running locally).                |
 
-The automated tests make **no AWS or AI calls**: DynamoDB, Lambda, Cognito and Bedrock are all faked, and the test
-environment uses dummy credentials.
+The automated tests make **no AWS or AI calls**: DynamoDB, Lambda, Cognito, Parameter Store, Bedrock and the
+Anthropic API are all faked, and the test environment uses dummy credentials.
 
 ## Running locally
 
@@ -293,19 +294,68 @@ To replace them:
 The total budget is **$25 a month** for everything, including tests and hosting. An AWS Budget emails the alert
 address when actual spend passes **$20**.
 
-- `MODEL_ID` is the Bedrock model or inference profile `PlannerFn` calls. The default is
-  `us.anthropic.claude-haiku-4-5-20251001-v1:0`, a US cross-Region inference profile, priced at **$1 per million
-  input tokens and $5 per million output tokens**. Check these prices on the Amazon Bedrock pricing page before
-  relying on them.
-- Each plan makes one Bedrock Converse call, plus at most 2 retries when the answer is unusable or Bedrock is
-  throttling. The scheduler, transit routing and safety checks are plain code and cost nothing per plan.
+- `MODEL_ID` is the model `PlannerFn` calls. The default is Claude Haiku 4.5 on either provider: `claude-haiku-4-5`
+  on the Anthropic API, and `us.anthropic.claude-haiku-4-5-20251001-v1:0` (a US cross-Region inference profile) on
+  Amazon Bedrock. Both are priced at **$1 per million input tokens and $5 per million output tokens**. Check these
+  prices on the provider's pricing page before relying on them.
+- Each plan makes one AI call, plus at most 2 retries when the answer is unusable or the AI service is busy. The
+  scheduler, transit routing and safety checks are plain code and cost nothing per plan.
+- **With the Anthropic API, the AI cost is billed by Anthropic, not AWS.** The AWS Budget does not see it, so it
+  is outside the $20 alert. Set a spend limit for the key's workspace in the Anthropic Console.
 - Each plan records its own cost in `aiCostUSD`: input tokens × input price + output tokens × output price, summed
   over every attempt. For example, 10,000 input and 1,500 output tokens at the default prices cost
   $0.0100 + $0.0075 = $0.0175.
 - To use another model, deploy with `-c modelId=<id>` and give its prices so the recorded cost is right:
-  `-c modelInputPricePerMTok=3 -c modelOutputPricePerMTok=15`. The IAM policy then allows only that model.
+  `-c modelInputPricePerMTok=3 -c modelOutputPricePerMTok=15`. On Bedrock, the IAM policy then allows only that
+  model. A model id that belongs to the other provider is refused when the stack is synthesized.
 - Other cost guards: 3 plans per person per month, a 5 requests/second API throttle, on-demand DynamoDB and
   2-week log retention.
+
+## AI provider
+
+`aiProvider` in `infra/cdk.json` chooses where `PlannerFn` sends its AI call. It applies to every deploy, by hand
+or from the pipeline. `-c aiProvider=<name>` overrides it for one command.
+
+| `aiProvider`          | The call goes to                       | What it needs                                            |
+| --------------------- | -------------------------------------- | -------------------------------------------------------- |
+| `anthropic` (current) | The Anthropic API, `api.anthropic.com` | An Anthropic API key in Parameter Store, one per stage   |
+| `bedrock`             | Amazon Bedrock in `us-east-1`          | Anthropic's one-time first-use form sent for the account |
+
+The answer checks, the retries and the cost sum are the same code for both (`src/lib/ai.ts`); the Anthropic path is
+an adapter in `src/lib/anthropic.ts`. Two things differ on the Anthropic path:
+
+- The traveler's trip details (dates, wishlist, notes, dietary needs; never their email address) leave AWS and go
+  to Anthropic, under the terms of the key's Anthropic account.
+- No `temperature` is sent, because the current Anthropic API version rejects it. The model samples with its
+  defaults; every answer is still checked against the catalog before it is used.
+
+### Storing the Anthropic API key
+
+The key is stored by hand, once per stage, as a SecureString parameter named `/jarvel/<stage>/anthropic-api-key`
+in `us-east-1`, encrypted with the account's default `aws/ssm` key. The stack only holds the parameter's name and
+lets `PlannerFn` read that one parameter. The key is never in the template, an environment variable, a log or git.
+
+```sh
+read -rs ANTHROPIC_KEY   # paste the key and press Enter; nothing is shown or kept in the shell history
+aws ssm put-parameter --region us-east-1 --type SecureString \
+  --name /jarvel/staging/anthropic-api-key --value "$ANTHROPIC_KEY"
+unset ANTHROPIC_KEY
+```
+
+In Windows PowerShell:
+
+```powershell
+$key = Read-Host -AsSecureString 'Anthropic API key'
+aws ssm put-parameter --region us-east-1 --type SecureString `
+  --name /jarvel/staging/anthropic-api-key --value ([System.Net.NetworkCredential]::new('', $key).Password)
+```
+
+- Use a key made only for Jarvel, in its own Anthropic Console workspace with a spend limit, so it can be revoked
+  without touching anything else. **Anyone with administrator access to the AWS account can read the parameter.**
+- To replace the key, run the same command with `--overwrite`. `PlannerFn` reads the key when it starts and reads
+  it again after Anthropic refuses it, so a replaced key needs no deploy.
+- Until the parameter exists, every plan ends `FAILED` and its count is given back; the `PlannerFn` log names
+  `ParameterNotFound`. A refused key is logged as `AnthropicAuthenticationError`.
 
 ## Deploying
 
@@ -319,6 +369,8 @@ npm run diff -w @jarvel/infra -- -c stage=staging -c alertEmail=you@example.com
 npm run deploy -w @jarvel/infra -- -c stage=staging -c alertEmail=you@example.com
 ```
 
+- **Store the Anthropic API key first** (see [Storing the Anthropic API key](#storing-the-anthropic-api-key)). The
+  deploy itself does not need it, but no plan can be built without it.
 - **Review the diff** before every deploy, especially IAM, network and encryption changes. The deploy asks you to
   confirm security-related changes; do not skip that with `--require-approval never`.
 - After the first deploy, confirm the SNS email subscription (AWS sends a confirmation email to `alertEmail`).
@@ -349,7 +401,7 @@ Run this against each stage after every deploy. Use a test account you invited y
 5. **Read the Markdown** with `?format=markdown`; it shows the days, the sample-data warning and the disclaimer.
 6. **Delete** the plan; expect `204`, then `404` on `GET`.
 
-The test plan uses one of the tester's 3 monthly plans and one real Bedrock call.
+The test plan uses one of the tester's 3 monthly plans and one real AI call.
 
 ## Rollback
 

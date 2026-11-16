@@ -11,12 +11,14 @@
     "dev": "tsx scripts/dev-server.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.8.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1152.0",
     "@aws-sdk/client-cognito-identity-provider": "^3.1156.0",
     "@aws-sdk/client-dynamodb": "^3.1152.0",
     "@aws-sdk/client-lambda": "^3.1156.0",
     "@aws-sdk/client-s3": "^3.1152.0",
     "@aws-sdk/client-sfn": "^3.1152.0",
+    "@aws-sdk/client-ssm": "^3.1156.0",
     "@aws-sdk/lib-dynamodb": "^3.1152.0",
     "@jarvel/shared": "^0.1.0",
     "zod": "^4.6.7"

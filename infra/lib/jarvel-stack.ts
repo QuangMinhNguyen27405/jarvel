@@ -21,6 +21,18 @@ import type { Construct } from 'constructs';
 export const STAGES = ['staging', 'prod'] as const;
 export type StageName = (typeof STAGES)[number];
 
+/** Where PlannerFn sends its one AI call: Amazon Bedrock, or the Anthropic API with a key from Parameter Store. */
+export const AI_PROVIDERS = ['bedrock', 'anthropic'] as const;
+export type AiProvider = (typeof AI_PROVIDERS)[number];
+
+/**
+ * The SecureString parameter that holds a stage's Anthropic API key. The stack does not create it and never sees
+ * its value: the admin stores the key there by hand, encrypted with the account's default `aws/ssm` key.
+ */
+export function anthropicKeyParameterName(stage: StageName): string {
+  return `/jarvel/${stage}/anthropic-api-key`;
+}
+
 /** The Region every stage is deployed to (NFR6: personal data stays in a US Region). */
 export const DEPLOY_REGION = 'us-east-1';
 /** Regions a `us.` cross-Region inference profile may route a Bedrock call to. */
@@ -32,7 +44,9 @@ export const API_BURST_LIMIT = 10;
 
 export interface JarvelStackProps extends StackProps {
   stage: StageName;
-  /** Bedrock model or `us.` inference profile id used by PlannerFn (MODEL_ID). */
+  /** Which AI service PlannerFn calls (AI_PROVIDER). */
+  aiProvider: AiProvider;
+  /** Model used by PlannerFn (MODEL_ID): a Bedrock model or `us.` inference profile id, or an Anthropic API model id. */
   modelId: string;
   /** Address that receives the alarm and budget emails. */
   alertEmail: string;
@@ -57,7 +71,8 @@ export function bedrockModelArns(modelId: string, account: string): string[] {
 export class JarvelStack extends Stack {
   constructor(scope: Construct, id: string, props: JarvelStackProps) {
     super(scope, id, props);
-    const { stage, modelId, alertEmail } = props;
+    const { stage, aiProvider, modelId, alertEmail } = props;
+    const anthropicKeyParameter = anthropicKeyParameterName(stage);
 
     // --- Sign-in (D8): invite-only, email as the username, Cognito's default password policy, 1-hour tokens.
     const userPool = new UserPool(this, 'Users', {
@@ -125,9 +140,12 @@ export class JarvelStack extends Stack {
       retryAttempts: 0,
       environment: {
         TABLE_NAME: table.tableName,
+        AI_PROVIDER: aiProvider,
         MODEL_ID: modelId,
         STAGE: stage,
         NODE_OPTIONS: '--enable-source-maps',
+        // Only the parameter's name is here. The key itself is read at run time and is never in the template.
+        ...(aiProvider === 'anthropic' ? { ANTHROPIC_KEY_PARAMETER: anthropicKeyParameter } : {}),
         ...(props.modelPrices
           ? {
               MODEL_INPUT_PRICE_PER_MTOK: props.modelPrices.inputPerMTok,
@@ -181,12 +199,20 @@ export class JarvelStack extends Stack {
       }),
     );
     plannerFn.addToRolePolicy(
-      new PolicyStatement({
-        // The Converse API is authorised by bedrock:InvokeModel; there is no separate Converse action.
-        sid: 'ConverseWithConfiguredModel',
-        actions: ['bedrock:InvokeModel'],
-        resources: bedrockModelArns(modelId, this.account),
-      }),
+      aiProvider === 'anthropic'
+        ? new PolicyStatement({
+            // Reading the one key parameter is all this path needs from AWS. Decrypting it with the default
+            // `aws/ssm` key is allowed by that key's own policy for callers that come through Parameter Store.
+            sid: 'ReadAnthropicApiKey',
+            actions: ['ssm:GetParameter'],
+            resources: [`arn:aws:ssm:${DEPLOY_REGION}:${this.account}:parameter${anthropicKeyParameter}`],
+          })
+        : new PolicyStatement({
+            // The Converse API is authorised by bedrock:InvokeModel; there is no separate Converse action.
+            sid: 'ConverseWithConfiguredModel',
+            actions: ['bedrock:InvokeModel'],
+            resources: bedrockModelArns(modelId, this.account),
+          }),
     );
 
     // --- HTTP API (D9): a JWT authorizer on every route except /health, and a stage throttle (NFR3 cost guard).
