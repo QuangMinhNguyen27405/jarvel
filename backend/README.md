@@ -342,6 +342,9 @@ aws ssm put-parameter --region us-east-1 --type SecureString \
 unset ANTHROPIC_KEY
 ```
 
+In Git Bash on Windows, put `MSYS_NO_PATHCONV=1` in front of `aws`. Without it, Git Bash rewrites the parameter
+name as a Windows file path, and the key is stored under a name the planner never reads.
+
 In Windows PowerShell:
 
 ```powershell
