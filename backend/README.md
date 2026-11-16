@@ -45,13 +45,49 @@ npm run dev -w @jarvel/frontend       # web app on http://localhost:5173 (second
   other character is refused with `401`. Each name has its own plans and its own limit of 3 plans a month.
 - **It starts with a demo account** that already has one trip (see [Demo account](#demo-account)).
 - **Data is in memory** (the same fake table the tests use), so everything is gone when the server stops.
-- **The AI model is a scripted stand-in** that picks the wishlist places and fills the days from the catalog, after
+- **The AI model is a scripted stand-in** (unless you ask for the real one, see
+  [Trying a real Anthropic key locally](#trying-a-real-anthropic-key-locally)). It picks the wishlist places and
+  fills the days from the catalog, after
   `DEV_PLANNER_DELAY_MS` (default 3000) so you can watch a plan go from `QUEUED` to `SUCCEEDED`. The scheduling,
   transit, safety rules and final check are the real code.
 - **Only this computer can reach it.** It listens on `127.0.0.1`. `HOST` changes that (for example `HOST=0.0.0.0`
   to try it from a phone on your network), but anyone on that network can then use it with any name.
 - Each day of a finished plan shows a map in the web app (OpenStreetMap tiles, loaded from the internet).
 - `PORT` changes the port. **Never deploy the dev server**: it has no real sign-in.
+
+### Trying a real Anthropic key locally
+
+`DEV_AI=anthropic` makes the local server call the real Anthropic API in place of the stand-in, through the same
+adapter a deployed stage uses. Use it to check a key before a deploy. The key is read from `ANTHROPIC_API_KEY` in
+the terminal that starts the server. It is never written to a file, and it is gone when that terminal closes.
+
+In Windows PowerShell:
+
+```powershell
+$key = Read-Host -AsSecureString 'Anthropic API key'
+$env:ANTHROPIC_API_KEY = [System.Net.NetworkCredential]::new('', $key).Password
+$env:DEV_AI = 'anthropic'
+npm run dev -w @jarvel/backend
+```
+
+In a POSIX shell:
+
+```sh
+read -rs ANTHROPIC_API_KEY && export ANTHROPIC_API_KEY   # paste the key and press Enter; nothing is shown
+DEV_AI=anthropic npm run dev -w @jarvel/backend
+```
+
+- The start-up lines say which AI is in use. **Every plan is then a paid call**, and the demo trip is built when
+  the server starts, so each start is one call (about a cent or less with the default model). `DEV_SEED_DEMO=0`
+  starts without it.
+- **The key works** when the log shows `"status":"SUCCEEDED"` with an `aiCostUSD` above 0, and the trip opens in
+  the web app.
+- **The key is refused** when the log shows `plan build failed` with `AnthropicAuthenticationError`. The plan ends
+  `FAILED` and nothing is charged. `AnthropicNotFoundError` means the key's account cannot use the model.
+- `DEV_AI` has to be set by name. A key that only happens to be in the environment is never used.
+- `MODEL_ID` tries another Anthropic model, for example `MODEL_ID=claude-haiku-5-5`.
+- To go back to the stand-in, close the terminal, or remove both variables
+  (`Remove-Item Env:ANTHROPIC_API_KEY, Env:DEV_AI` in PowerShell).
 
 ```sh
 curl -s -X POST http://localhost:8787/plans -H "Authorization: Bearer dev-amy" -H "Content-Type: application/json" \

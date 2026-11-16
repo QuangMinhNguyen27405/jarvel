@@ -6,9 +6,12 @@ import { DEMO_EMAIL } from '../scripts/demo.js';
 import {
   createDevServer,
   DEFAULT_HOST,
+  devAiFromEnv,
   devUserId,
+  scriptedConverse,
   SIGN_IN_NAME_PATTERN,
   type DemoAccount,
+  type DevAi,
   type DevServer,
   type DevServerOptions,
 } from '../scripts/dev-server.js';
@@ -87,6 +90,57 @@ describe('local dev server (R-09)', () => {
     const bobs = (await (await fetch(`${base}/plans`, { headers: as('bob') })).json()) as ListPlansResponse;
     expect(bobs.plans).toEqual([]);
     expect((await fetch(`${base}/plans/${planId}`, { headers: as('bob') })).status).toBe(404);
+  });
+});
+
+describe('local dev server: trying a real AI (DEV_AI)', () => {
+  it('uses the scripted stand-in unless another AI is asked for by name', () => {
+    expect(devAiFromEnv({})).toBeUndefined();
+    expect(devAiFromEnv({ DEV_AI: 'scripted' })).toBeUndefined();
+    // A key that happens to be in the environment is not enough: nothing is spent by accident.
+    expect(devAiFromEnv({ ANTHROPIC_API_KEY: 'a-key' })).toBeUndefined();
+  });
+
+  it('uses the Anthropic API with the key from the environment when asked', () => {
+    const ai = devAiFromEnv({ DEV_AI: 'anthropic', ANTHROPIC_API_KEY: ' a-key\n' });
+    expect(ai?.modelId).toBe('claude-haiku-4-5');
+    expect(ai?.converse).toBeTypeOf('function');
+    expect(
+      devAiFromEnv({ DEV_AI: 'anthropic', ANTHROPIC_API_KEY: 'a-key', MODEL_ID: 'claude-haiku-5-5' })?.modelId,
+    ).toBe('claude-haiku-5-5');
+  });
+
+  it('stops with a plain reason on a missing key or an unknown choice, and never prints the key', () => {
+    expect(() => devAiFromEnv({ DEV_AI: 'anthropic' })).toThrow(/needs your key in the ANTHROPIC_API_KEY/);
+    expect(() => devAiFromEnv({ DEV_AI: 'anthropic', ANTHROPIC_API_KEY: '  ' })).toThrow(/ANTHROPIC_API_KEY/);
+    const unknown = () => devAiFromEnv({ DEV_AI: 'bedrock', ANTHROPIC_API_KEY: 'secret-key-value' });
+    expect(unknown).toThrow(/DEV_AI must be scripted or anthropic, got bedrock/);
+    expect(unknown).not.toThrow(/secret-key-value/);
+  });
+
+  it('builds plans with the AI it is given, under that AI’s model name', async () => {
+    const asked: (string | undefined)[] = [];
+    const scripted = scriptedConverse(0);
+    const ai: DevAi = {
+      modelId: 'claude-haiku-4-5',
+      converse: (request, requestOptions) => {
+        asked.push(request.modelId);
+        return scripted(request, requestOptions);
+      },
+    };
+    const { base } = await start(DEFAULT_HOST, { seedDemo: false, ai });
+    const body = validRequestBody({ arrival: daysFromNow(7, '10:00'), departure: daysFromNow(9, '15:00') });
+    const created = await fetch(`${base}/plans`, { method: 'POST', headers: as('amy'), body: JSON.stringify(body) });
+    const { planId } = (await created.json()) as { planId: string };
+
+    let plan: PlanRecord | undefined;
+    for (let attempt = 0; attempt < 50 && plan?.status !== 'SUCCEEDED'; attempt += 1) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 50));
+      plan = (await (await fetch(`${base}/plans/${planId}`, { headers: as('amy') })).json()) as PlanRecord;
+      expect(plan.status).not.toBe('FAILED');
+    }
+    expect(plan?.status).toBe('SUCCEEDED');
+    expect(asked).toEqual(['claude-haiku-4-5']);
   });
 });
 

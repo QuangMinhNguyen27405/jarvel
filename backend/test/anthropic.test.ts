@@ -13,6 +13,7 @@ import {
   type SelectionInput,
 } from '../src/lib/ai.js';
 import {
+  anthropicFromApiKey,
   anthropicFromParameterStore,
   createAnthropicConverse,
   DEFAULT_ANTHROPIC_MODEL_ID,
@@ -307,6 +308,16 @@ describe('anthropicFromParameterStore', () => {
     expect(`${sent.headers.get('authorization')} ${sent.headers.get('x-api-key')}`).toContain('test-key-123');
     expect(sent.body).toMatchObject({ model: 'claude-haiku-4-5', max_tokens: 1500, tool_choice: { type: 'tool' } });
     expect(sent.body).not.toHaveProperty('temperature');
+  });
+
+  it('sends with a key its caller already holds, without Parameter Store (the local server)', async () => {
+    const network = fakeFetch([() => jsonResponse(200, toolCall(baseSelection()))]);
+    const converse = createAnthropicConverse(anthropicFromApiKey('local-key-456', { fetch: network.fetch }));
+    expect((await chooseStops(input, options(converse))).selection).toEqual(baseSelection());
+    expect(ssmMock.commandCalls(GetParameterCommand)).toHaveLength(0);
+    const sent = network.requests[0]!;
+    expect(sent.url).toBe('https://api.anthropic.com/v1/messages');
+    expect(`${sent.headers.get('authorization')} ${sent.headers.get('x-api-key')}`).toContain('local-key-456');
   });
 
   it('refuses an empty parameter', async () => {

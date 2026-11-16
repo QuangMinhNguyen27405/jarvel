@@ -3,6 +3,8 @@
 //     The name may be an email address.
 //   - DynamoDB is the in-memory fake table the tests use. Data is lost when the server stops.
 //   - The AI model is a scripted stand-in that picks the wishlist places, then fills days from the catalog.
+//     DEV_AI=anthropic swaps in the real Anthropic API with ANTHROPIC_API_KEY, to try a key before a deploy.
+//     Every plan is then a paid call, the demo trip included.
 //   - It starts with a demo account (scripts/demo.ts) that already has one trip. `GET /dev/demo` names it, so the
 //     web app's local sign-in can offer it. DEV_SEED_DEMO=0 starts empty.
 //   - It listens on 127.0.0.1 only, so nobody else on the network can use it (R-09). HOST changes that.
@@ -13,6 +15,7 @@ import { pathToFileURL } from 'node:url';
 import type { ConverseCommandOutput } from '@aws-sdk/client-bedrock-runtime';
 import { createApiHandler, type ApiEvent } from '../src/handlers/api.js';
 import { DEFAULT_PRICES, TOOL_NAME, type ConverseFn } from '../src/lib/ai.js';
+import { anthropicFromApiKey, createAnthropicConverse, DEFAULT_ANTHROPIC_MODEL_ID } from '../src/lib/anthropic.js';
 import { loadBostonData } from '../src/lib/data.js';
 import { IdempotencyStore } from '../src/lib/idempotency.js';
 import { createLogger, createMetrics } from '../src/lib/log.js';
@@ -70,6 +73,29 @@ export function scriptedConverse(thinkMs = 3000): ConverseFn {
       metrics: { latencyMs: thinkMs },
     };
     return output;
+  };
+}
+
+/** The AI that chooses the stops, and the model name recorded with each plan. */
+export interface DevAi {
+  converse: ConverseFn;
+  modelId: string;
+}
+
+/**
+ * The AI the local server uses, from DEV_AI. Unset or `scripted` is the stand-in (returns undefined). `anthropic`
+ * is the real Anthropic API with the key in ANTHROPIC_API_KEY, the same adapter a deployed stage uses. It has to
+ * be asked for by name, so a key that happens to be in the environment is never spent by accident.
+ */
+export function devAiFromEnv(env: NodeJS.ProcessEnv = process.env): DevAi | undefined {
+  const choice = env.DEV_AI || 'scripted';
+  if (choice === 'scripted') return undefined;
+  if (choice !== 'anthropic') throw new Error(`DEV_AI must be scripted or anthropic, got ${choice}`);
+  const apiKey = env.ANTHROPIC_API_KEY?.trim();
+  if (!apiKey) throw new Error('DEV_AI=anthropic needs your key in the ANTHROPIC_API_KEY environment variable');
+  return {
+    converse: createAnthropicConverse(anthropicFromApiKey(apiKey)),
+    modelId: env.MODEL_ID || DEFAULT_ANTHROPIC_MODEL_ID,
   };
 }
 
@@ -143,6 +169,8 @@ async function handle(
 export interface DevServerOptions {
   /** How long the scripted AI stand-in "thinks" before it answers. */
   thinkMs?: number;
+  /** The AI to use in place of the scripted stand-in (see `devAiFromEnv`). */
+  ai?: DevAi;
   /** `false` starts with no demo account and an empty table. Default: the demo account with its trip. */
   seedDemo?: boolean;
   /** The demo account's sign-in name. Default: `DEMO_EMAIL` from scripts/demo.ts. */
@@ -180,8 +208,8 @@ export function createDevServer(options: DevServerOptions = {}): DevServer {
     store,
     quota,
     data,
-    converse: scriptedConverse(options.thinkMs),
-    modelId: 'dev-scripted',
+    converse: options.ai?.converse ?? scriptedConverse(options.thinkMs),
+    modelId: options.ai?.modelId ?? 'dev-scripted',
     prices: DEFAULT_PRICES,
     now,
     log,
@@ -260,14 +288,28 @@ const isMain = process.argv[1] !== undefined && import.meta.url === pathToFileUR
 if (isMain) {
   const port = Number(process.env.PORT ?? DEFAULT_PORT);
   const host = process.env.HOST ?? DEFAULT_HOST;
+  let ai: DevAi | undefined;
+  try {
+    ai = devAiFromEnv();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
   const dev = createDevServer({
     thinkMs: Number(process.env.DEV_PLANNER_DELAY_MS ?? 3000),
     seedDemo: process.env.DEV_SEED_DEMO !== '0',
+    ai,
   });
   dev.server.listen(port, host, () => {
     console.log(
       `Jarvel dev API on http://${host === DEFAULT_HOST ? 'localhost' : host}:${port}, this computer only ` +
         `unless HOST is set  (sign in with "Authorization: Bearer dev-<name>")`,
+    );
+    console.log(
+      ai === undefined
+        ? 'AI: the scripted stand-in. No AI call is made and nothing is billed.'
+        : `AI: the real Anthropic API, model ${ai.modelId}, with the key in ANTHROPIC_API_KEY. Every plan is a ` +
+            `paid call, the demo trip included.`,
     );
     console.log(
       dev.demoUser === null

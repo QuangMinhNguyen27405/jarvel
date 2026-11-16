@@ -158,13 +158,21 @@ export function createAnthropicConverse(
   };
 }
 
-/**
- * Reads the API key from a SecureString parameter and returns a sender that uses it. The SDK's own retries are
- * off, because lib/ai.ts already retries at most twice (NFR9). `fetch` is replaceable only so tests stay offline.
- */
+/** Where a sender's requests go. `fetch` is replaceable only so tests stay offline. */
+export interface SenderOptions {
+  fetch?: ClientOptions['fetch'];
+}
+
+// The SDK's own retries are off, because lib/ai.ts already retries at most twice (NFR9).
+function senderFor(apiKey: string, options: SenderOptions): SendMessageFn {
+  const client = new Anthropic({ apiKey, maxRetries: 0, timeout: REQUEST_TIMEOUT_MS, fetch: options.fetch });
+  return (body, requestOptions) => client.messages.create(body, { signal: requestOptions?.signal });
+}
+
+/** Deployed stages: reads the API key from a SecureString parameter and returns a sender that uses it. */
 export function anthropicFromParameterStore(
   parameterName: string,
-  options: { fetch?: ClientOptions['fetch'] } = {},
+  options: SenderOptions = {},
 ): () => Promise<SendMessageFn> {
   return async () => {
     const result = await new SSMClient({}).send(new GetParameterCommand({ Name: parameterName, WithDecryption: true }));
@@ -172,7 +180,11 @@ export function anthropicFromParameterStore(
     if (!apiKey) {
       throw Object.assign(new Error(`Parameter ${parameterName} holds no API key`), { name: 'AnthropicKeyMissing' });
     }
-    const client = new Anthropic({ apiKey, maxRetries: 0, timeout: REQUEST_TIMEOUT_MS, fetch: options.fetch });
-    return (body, requestOptions) => client.messages.create(body, { signal: requestOptions?.signal });
+    return senderFor(apiKey, options);
   };
+}
+
+/** The local server only: a sender for a key its caller already holds (ANTHROPIC_API_KEY in their own terminal). */
+export function anthropicFromApiKey(apiKey: string, options: SenderOptions = {}): () => Promise<SendMessageFn> {
+  return async () => senderFor(apiKey, options);
 }
