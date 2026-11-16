@@ -1,0 +1,163 @@
+# Deploys one stage. Called by deploy.yml for staging and for production; it does not run by itself.
+#
+#   diff    prints what would change, and stops the pipeline if the change broadens permissions or network access
+#   deploy  waits for the environment's approval (production only), deploys, then runs the smoke check
+#
+# This repository is public, so these logs are public. The alert address and the role are secrets, which GitHub
+# hides in logs, and the AWS account id is masked by the sign-in step.
+name: Deploy one stage
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        description: The CDK stage, staging or prod.
+        required: true
+        type: string
+      environment:
+        description: The GitHub environment the deploy job runs in, staging or production.
+        required: true
+        type: string
+    secrets:
+      AWS_DEPLOY_ROLE_ARN:
+        description: The role GitHub signs in to AWS with. It can only be used by this repository.
+        required: true
+      ALERT_EMAIL:
+        description: Where the stack's alarm and budget emails go.
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  STAGE: ${{ inputs.stage }}
+
+jobs:
+  diff:
+    name: Show the ${{ inputs.stage }} diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Sign in to AWS (short-lived, no stored key)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+          role-session-name: jarvel-${{ inputs.stage }}-diff-${{ github.run_id }}
+
+      - name: Show what would change
+        working-directory: infra
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: npx cdk diff -c "stage=$STAGE" -c "alertEmail=$ALERT_EMAIL"
+
+      # Exit code 1 means the change adds permissions or opens network access. The step above already passed, so a
+      # failure here is that, not a sign-in problem.
+      - name: Stop if the change broadens permissions or network access
+        working-directory: infra
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: |
+          if ! npx cdk diff --security-only --fail-on broadening -c "stage=$STAGE" -c "alertEmail=$ALERT_EMAIL"; then
+            echo "::error title=Deploy this change by hand::This change broadens permissions or network access for the $STAGE stage. The pipeline does not deploy such a change. Read the diff in the step above, then deploy from your own machine as backend/README.md (Deploying) describes."
+            exit 1
+          fi
+
+  deploy:
+    name: Deploy to ${{ inputs.stage }}
+    needs: diff
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check the Boston data
+        run: npm run validate:data
+
+      - name: Sign in to AWS (short-lived, no stored key)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          mask-aws-account-id: true
+          role-session-name: jarvel-${{ inputs.stage }}-deploy-${{ github.run_id }}
+
+      # `--require-approval broadening` is the safe setting: if a broadening change reached this step anyway, the
+      # deploy stops here, because nobody is at a terminal to confirm it. Never change it to `never`.
+      - name: Deploy
+        env:
+          ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+        run: >-
+          npm run deploy -w @jarvel/infra --
+          -c "stage=$STAGE"
+          -c "alertEmail=$ALERT_EMAIL"
+          --require-approval broadening
+
+      # The short check: the API answers, and it refuses a request with no sign-in. It makes no AI call and uses no
+      # monthly plan. The full check (sign in, build a plan, read it, delete it) is done by hand; see
+      # backend/README.md, "Post-deploy smoke check".
+      - name: Smoke check
+        run: |
+          api="$(jq -r 'to_entries[0].value.ApiUrl' infra/cdk-outputs.json | sed 's:/*$::')"
+          if [ -z "$api" ] || [ "$api" = "null" ]; then
+            echo "::error::The deploy wrote no ApiUrl output, so the smoke check cannot run."
+            exit 1
+          fi
+
+          healthy=no
+          for attempt in 1 2 3 4 5 6; do
+            code="$(curl -s -o health.json -w '%{http_code}' --max-time 10 "$api/health" || true)"
+            if [ "$code" = "200" ] && jq -e '.status == "ok"' health.json > /dev/null; then
+              healthy=yes
+              break
+            fi
+            echo "Health check attempt $attempt answered $code. Trying again in 10 seconds."
+            sleep 10
+          done
+          if [ "$healthy" != "yes" ]; then
+            echo "::error title=Smoke check failed::GET /health did not answer 200 with status ok. Roll back as the rollback runbook describes."
+            exit 1
+          fi
+
+          code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST "$api/plans" || true)"
+          if [ "$code" != "401" ]; then
+            echo "::error title=Smoke check failed::POST /plans with no sign-in answered $code, not 401. Roll back as the rollback runbook describes."
+            exit 1
+          fi
+          echo "Smoke check passed: the API is healthy and refuses a request with no sign-in."
+
+      # The deploy writes the stack outputs to a file. It is never committed; remove it so no later step can pick it up.
+      - name: Remove the outputs file
+        if: always()
+        run: rm -f infra/cdk-outputs.json health.json

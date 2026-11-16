@@ -1,0 +1,239 @@
+{
+  "version": "sample-2026-10-23",
+  "sample": true,
+  "notice": "SAMPLE DATA FOR TESTS AND THE FIRST DEPLOY. Station positions, travel times, headways, service hours and fares are rough placeholders written by hand and NOT checked against MBTA timetables. Replace this file with hand-checked data, then run `npm run validate:data`.",
+  "sourceCredits": [
+    "Sample transit data written by hand for testing. Station and line names refer to the MBTA network; the times and fares are placeholders and were not taken from MBTA feeds."
+  ],
+  "network": {
+    "lines": [
+      {
+        "id": "blue",
+        "name": "Blue Line",
+        "color": "#003DA5",
+        "mode": "subway",
+        "headwayMinutes": { "peak": 5, "offPeak": 9, "evening": 12 },
+        "firstTrain": "05:15",
+        "lastTrain": "00:30",
+        "serviceByDay": {
+          "sat": { "firstTrain": "05:30", "lastTrain": "00:30" },
+          "sun": { "firstTrain": "06:00", "lastTrain": "00:30" }
+        },
+        "fareUSD": 2.4
+      },
+      {
+        "id": "orange",
+        "name": "Orange Line",
+        "color": "#ED8B00",
+        "mode": "subway",
+        "headwayMinutes": { "peak": 6, "offPeak": 9, "evening": 12 },
+        "firstTrain": "05:15",
+        "lastTrain": "00:30",
+        "serviceByDay": {
+          "sat": { "firstTrain": "05:30", "lastTrain": "00:30" },
+          "sun": { "firstTrain": "06:00", "lastTrain": "00:30" }
+        },
+        "fareUSD": 2.4
+      },
+      {
+        "id": "red",
+        "name": "Red Line",
+        "color": "#DA291C",
+        "mode": "subway",
+        "headwayMinutes": { "peak": 6, "offPeak": 9, "evening": 12 },
+        "firstTrain": "05:15",
+        "lastTrain": "00:30",
+        "serviceByDay": {
+          "sat": { "firstTrain": "05:30", "lastTrain": "00:30" },
+          "sun": { "firstTrain": "06:00", "lastTrain": "00:30" }
+        },
+        "fareUSD": 2.4
+      },
+      {
+        "id": "green-trunk",
+        "name": "Green Line (central subway)",
+        "color": "#00843D",
+        "mode": "light-rail",
+        "headwayMinutes": { "peak": 5, "offPeak": 7, "evening": 10 },
+        "firstTrain": "05:15",
+        "lastTrain": "00:30",
+        "serviceByDay": {
+          "sat": { "firstTrain": "05:30", "lastTrain": "00:30" },
+          "sun": { "firstTrain": "06:00", "lastTrain": "00:30" }
+        },
+        "fareUSD": 2.4
+      }
+    ],
+    "stations": [
+      {
+        "id": "wonderland",
+        "name": "Wonderland",
+        "lines": ["blue"],
+        "lat": 42.4134,
+        "lng": -70.9916,
+        "accessible": true
+      },
+      { "id": "airport", "name": "Airport", "lines": ["blue"], "lat": 42.3742, "lng": -71.0303, "accessible": true },
+      { "id": "maverick", "name": "Maverick", "lines": ["blue"], "lat": 42.3691, "lng": -71.0395, "accessible": true },
+      { "id": "aquarium", "name": "Aquarium", "lines": ["blue"], "lat": 42.3598, "lng": -71.0517, "accessible": true },
+      {
+        "id": "state",
+        "name": "State",
+        "lines": ["blue", "orange"],
+        "lat": 42.3589,
+        "lng": -71.0576,
+        "accessible": true
+      },
+      {
+        "id": "government-center",
+        "name": "Government Center",
+        "lines": ["blue", "green-trunk"],
+        "lat": 42.3597,
+        "lng": -71.0592,
+        "accessible": true
+      },
+      {
+        "id": "north-station",
+        "name": "North Station",
+        "lines": ["orange", "green-trunk"],
+        "lat": 42.3655,
+        "lng": -71.0612,
+        "accessible": true
+      },
+      {
+        "id": "haymarket",
+        "name": "Haymarket",
+        "lines": ["orange", "green-trunk"],
+        "lat": 42.363,
+        "lng": -71.0583,
+        "accessible": true
+      },
+      {
+        "id": "downtown-crossing",
+        "name": "Downtown Crossing",
+        "lines": ["orange", "red"],
+        "lat": 42.3555,
+        "lng": -71.0605,
+        "accessible": true
+      },
+      {
+        "id": "chinatown",
+        "name": "Chinatown",
+        "lines": ["orange"],
+        "lat": 42.3524,
+        "lng": -71.0626,
+        "accessible": true
+      },
+      {
+        "id": "back-bay",
+        "name": "Back Bay",
+        "lines": ["orange"],
+        "lat": 42.3474,
+        "lng": -71.0757,
+        "accessible": true
+      },
+      {
+        "id": "park-street",
+        "name": "Park Street",
+        "lines": ["red", "green-trunk"],
+        "lat": 42.3564,
+        "lng": -71.0624,
+        "accessible": true
+      },
+      {
+        "id": "south-station",
+        "name": "South Station",
+        "lines": ["red"],
+        "lat": 42.3522,
+        "lng": -71.0552,
+        "accessible": true
+      },
+      {
+        "id": "charles-mgh",
+        "name": "Charles/MGH",
+        "lines": ["red"],
+        "lat": 42.3612,
+        "lng": -71.0706,
+        "accessible": true
+      },
+      {
+        "id": "kendall-mit",
+        "name": "Kendall/MIT",
+        "lines": ["red"],
+        "lat": 42.3625,
+        "lng": -71.0862,
+        "accessible": true
+      },
+      { "id": "central", "name": "Central", "lines": ["red"], "lat": 42.3654, "lng": -71.1037, "accessible": true },
+      { "id": "harvard", "name": "Harvard", "lines": ["red"], "lat": 42.3734, "lng": -71.119, "accessible": true },
+      {
+        "id": "boylston",
+        "name": "Boylston",
+        "lines": ["green-trunk"],
+        "lat": 42.3529,
+        "lng": -71.0646,
+        "accessible": false
+      },
+      {
+        "id": "arlington",
+        "name": "Arlington",
+        "lines": ["green-trunk"],
+        "lat": 42.3519,
+        "lng": -71.0707,
+        "accessible": true
+      },
+      { "id": "copley", "name": "Copley", "lines": ["green-trunk"], "lat": 42.35, "lng": -71.0774, "accessible": true },
+      {
+        "id": "hynes",
+        "name": "Hynes Convention Center",
+        "lines": ["green-trunk"],
+        "lat": 42.3479,
+        "lng": -71.0877,
+        "accessible": true
+      }
+    ],
+    "edges": [
+      { "from": "wonderland", "to": "airport", "line": "blue", "minutes": 10 },
+      { "from": "airport", "to": "maverick", "line": "blue", "minutes": 2 },
+      { "from": "maverick", "to": "aquarium", "line": "blue", "minutes": 3 },
+      { "from": "aquarium", "to": "state", "line": "blue", "minutes": 2 },
+      { "from": "state", "to": "government-center", "line": "blue", "minutes": 1 },
+      { "from": "north-station", "to": "haymarket", "line": "orange", "minutes": 2 },
+      { "from": "haymarket", "to": "state", "line": "orange", "minutes": 2 },
+      { "from": "state", "to": "downtown-crossing", "line": "orange", "minutes": 1 },
+      { "from": "downtown-crossing", "to": "chinatown", "line": "orange", "minutes": 1 },
+      { "from": "chinatown", "to": "back-bay", "line": "orange", "minutes": 5 },
+      { "from": "harvard", "to": "central", "line": "red", "minutes": 3 },
+      { "from": "central", "to": "kendall-mit", "line": "red", "minutes": 2 },
+      { "from": "kendall-mit", "to": "charles-mgh", "line": "red", "minutes": 2 },
+      { "from": "charles-mgh", "to": "park-street", "line": "red", "minutes": 2 },
+      { "from": "park-street", "to": "downtown-crossing", "line": "red", "minutes": 1 },
+      { "from": "downtown-crossing", "to": "south-station", "line": "red", "minutes": 1 },
+      { "from": "north-station", "to": "haymarket", "line": "green-trunk", "minutes": 2 },
+      { "from": "haymarket", "to": "government-center", "line": "green-trunk", "minutes": 1 },
+      { "from": "government-center", "to": "park-street", "line": "green-trunk", "minutes": 1 },
+      { "from": "park-street", "to": "boylston", "line": "green-trunk", "minutes": 1 },
+      { "from": "boylston", "to": "arlington", "line": "green-trunk", "minutes": 1 },
+      { "from": "arlington", "to": "copley", "line": "green-trunk", "minutes": 1 },
+      { "from": "copley", "to": "hynes", "line": "green-trunk", "minutes": 2 }
+    ],
+    "transferPenaltyMinutes": 5,
+    "airport": {
+      "label": "Boston Logan Airport (BOS)",
+      "stationId": "airport",
+      "accessMinutes": 10,
+      "lat": 42.3656,
+      "lng": -71.0096,
+      "instruction": "Take the free airport shuttle bus between your terminal and Airport station (sample estimate: about 10 min)."
+    },
+    "fares": {
+      "subwaySingle": 2.4,
+      "busSingle": 1.7,
+      "sl1FromAirportFree": true,
+      "dayPass": 11,
+      "weekPass": 22.5,
+      "notes": "SAMPLE fares, not checked. Subway transfers are treated as free within one trip."
+    },
+    "sourceUrls": []
+  }
+}

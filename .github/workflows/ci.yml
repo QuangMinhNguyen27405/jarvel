@@ -1,0 +1,57 @@
+# Checks for every pull request to main. The deploy workflow runs the same checks before it deploys.
+# No AWS credentials and no secrets are used here: the tests fake every AWS service and the AI model.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Type check, lint, format, data, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Check the Boston data
+        run: npm run validate:data
+
+      # Fails below 80% line coverage in backend or infra. Never lower that threshold to make this pass.
+      - name: Tests with coverage
+        run: npm test
+
+      - name: Build the web app
+        run: npm run build:frontend
+
+      # Bundles both Lambda functions and writes the CloudFormation template. Nothing is deployed and AWS is not
+      # called. The address is a placeholder: nothing is sent to it.
+      - name: Build the infrastructure template (no deploy)
+        run: npm run synth -w @jarvel/infra -- -c stage=staging -c alertEmail=ci@example.com

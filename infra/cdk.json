@@ -1,0 +1,11 @@
+{
+  "app": "npx tsx bin/jarvel.ts",
+  "watch": {
+    "include": ["bin/**", "lib/**", "../backend/src/**"],
+    "exclude": ["test/**", "node_modules/**", "cdk.out/**"]
+  },
+  "context": {
+    "stage": "staging",
+    "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+  }
+}

@@ -1,0 +1,15 @@
+# Generated or installed content
+node_modules/
+coverage/
+cdk.out/
+dist/
+package-lock.json
+cdk-outputs.json
+
+# AI-DLC workflow records and harness files (not application code)
+aidlc/
+.claude/
+
+# Out of scope for this version: the traveler web app and the design notes
+frontend/
+docs/
