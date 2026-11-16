@@ -13,6 +13,7 @@ import { AttributeType, BillingMode, Table, TableEncryption } from 'aws-cdk-lib/
 import { PolicyStatement } from 'aws-cdk-lib/aws-iam';
 import { Architecture, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction, OutputFormat, type NodejsFunctionProps } from 'aws-cdk-lib/aws-lambda-nodejs';
+import { CfnAPIKey } from 'aws-cdk-lib/aws-location';
 import { LogGroup, RetentionDays } from 'aws-cdk-lib/aws-logs';
 import { Topic } from 'aws-cdk-lib/aws-sns';
 import { EmailSubscription } from 'aws-cdk-lib/aws-sns-subscriptions';
@@ -24,6 +25,20 @@ export type StageName = (typeof STAGES)[number];
 /** Where PlannerFn sends its one AI call: Amazon Bedrock, or the Anthropic API with a key from Parameter Store. */
 export const AI_PROVIDERS = ['bedrock', 'anthropic'] as const;
 export type AiProvider = (typeof AI_PROVIDERS)[number];
+
+/**
+ * The pages that may use a stage's maps key, as Amazon Location referer patterns (`*` and `?` are wildcards). The
+ * web app runs on the builder's own computer for now, on any port. Add a site's address when it is hosted.
+ */
+export const DEFAULT_MAP_REFERERS = ['http://localhost:*'];
+/** Amazon Location allows at most 5 referer patterns on a key, each of the characters below and no spaces. */
+export const MAX_MAP_REFERERS = 5;
+export const MAP_REFERER_PATTERN = /^[A-Za-z0-9$\-._+!*`(),;/?:@=&%]{1,253}$/;
+
+/** The Amazon Location key the web app draws its map with. Its value is read after a deploy, never stored in git. */
+export function mapsKeyName(stage: StageName): string {
+  return `jarvel-${stage}-maps`;
+}
 
 /**
  * The SecureString parameter that holds a stage's Anthropic API key. The stack does not create it and never sees
@@ -52,6 +67,8 @@ export interface JarvelStackProps extends StackProps {
   alertEmail: string;
   /** Optional price overrides in USD per million tokens, for a model other than the default. */
   modelPrices?: { inputPerMTok: string; outputPerMTok: string };
+  /** The pages that may use the maps key. Default: `DEFAULT_MAP_REFERERS`. */
+  mapReferers?: string[];
 }
 
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
@@ -304,7 +321,26 @@ export class JarvelStack extends Stack {
       ],
     });
 
+    // --- The map: an Amazon Location key for the web app. A key in a browser can be read by anyone who opens the
+    // page, so it is as narrow as a key can be: it reads map tiles and nothing else, only when the request comes
+    // from a listed page. It grants no access to any Jarvel data.
+    const mapsKey = new CfnAPIKey(this, 'MapsKey', {
+      keyName: mapsKeyName(stage),
+      description: `Jarvel ${stage}: lets the web app read Amazon Location map tiles.`,
+      noExpiry: true,
+      // Amazon Location refuses to change a recently used key, or to delete one that has not expired, without
+      // these. Without them a later change of the allowed pages, or a rollback, would leave the stack stuck.
+      forceUpdate: true,
+      forceDelete: true,
+      restrictions: {
+        allowActions: ['geo-maps:GetTile'],
+        allowResources: [`arn:aws:geo-maps:${DEPLOY_REGION}::provider/default`],
+        allowReferers: props.mapReferers ?? DEFAULT_MAP_REFERERS,
+      },
+    });
+
     new CfnOutput(this, 'ApiUrl', { value: apiStage.url });
+    new CfnOutput(this, 'MapsApiKeyName', { value: mapsKey.ref });
     new CfnOutput(this, 'UserPoolId', { value: userPool.userPoolId });
     new CfnOutput(this, 'UserPoolClientId', { value: userPoolClient.userPoolClientId });
     new CfnOutput(this, 'TableName', { value: table.tableName });

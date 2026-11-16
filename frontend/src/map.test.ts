@@ -1,6 +1,6 @@
 import type { DayPlan, ItineraryItem } from '@jarvel/shared';
 import { describe, expect, it } from 'vitest';
-import { dayMap } from './map.js';
+import { AMAZON_MAP_STYLES, amazonStyleUrl, basemapFor, dayMap, pathBounds } from './map.js';
 
 const HOTEL = { lat: 42.3586, lng: -71.0585 };
 const LIBRARY = { lat: 42.3493, lng: -71.0782 };
@@ -56,5 +56,63 @@ describe('dayMap', () => {
   it('gives an empty map for a day with nothing located (for example a plan made before locations existed)', () => {
     expect(dayMap(day([]))).toEqual({ stops: [], path: [] });
     expect(dayMap(day([item('a', 'visit', 'Old stop')]))).toEqual({ stops: [], path: [] });
+  });
+});
+
+describe('pathBounds', () => {
+  it('is the smallest box around the path, south-west corner first, each corner as [lng, lat]', () => {
+    expect(pathBounds([HOTEL, LIBRARY, AQUARIUM])).toEqual([
+      [LIBRARY.lng, LIBRARY.lat],
+      [AQUARIUM.lng, AQUARIUM.lat],
+    ]);
+  });
+
+  it('is a single point for one place, and nothing for an empty path', () => {
+    expect(pathBounds([HOTEL])).toEqual([
+      [HOTEL.lng, HOTEL.lat],
+      [HOTEL.lng, HOTEL.lat],
+    ]);
+    expect(pathBounds([])).toBeUndefined();
+  });
+});
+
+describe('the base map', () => {
+  it('builds the Amazon Location style address its guide gives, with the key escaped', () => {
+    expect(amazonStyleUrl('us-east-1', 'v1.public.abc')).toBe(
+      'https://maps.geo.us-east-1.amazonaws.com/v2/styles/Standard/descriptor?key=v1.public.abc',
+    );
+    expect(amazonStyleUrl('eu-central-1', 'a b&c', 'Monochrome')).toBe(
+      'https://maps.geo.eu-central-1.amazonaws.com/v2/styles/Monochrome/descriptor?key=a%20b%26c',
+    );
+    expect(AMAZON_MAP_STYLES).toEqual(['Standard', 'Monochrome', 'Hybrid', 'Satellite']);
+  });
+
+  it('is Amazon Location when the config has a Region and a maps key', () => {
+    expect(basemapFor({ region: 'us-east-1', mapsApiKey: ' v1.public.abc\n' })).toEqual({
+      provider: 'amazon',
+      styleUrl: amazonStyleUrl('us-east-1', 'v1.public.abc', 'Standard'),
+    });
+    expect(basemapFor({ region: 'us-east-1', mapsApiKey: 'k', mapStyle: 'Satellite' })).toEqual({
+      provider: 'amazon',
+      styleUrl: amazonStyleUrl('us-east-1', 'k', 'Satellite'),
+    });
+  });
+
+  it('is OpenStreetMap without a key, as in local development, or without a usable Region', () => {
+    expect(basemapFor({ region: '' })).toEqual({ provider: 'openstreetmap' });
+    expect(basemapFor({ region: 'us-east-1' })).toEqual({ provider: 'openstreetmap' });
+    expect(basemapFor({ region: 'us-east-1', mapsApiKey: '  ' })).toEqual({ provider: 'openstreetmap' });
+    expect(basemapFor({ region: '', mapsApiKey: 'k' })).toEqual({ provider: 'openstreetmap' });
+    // A Region is part of the address the browser calls, so anything that is not one is refused.
+    expect(basemapFor({ region: 'evil.example/x', mapsApiKey: 'k' })).toEqual({ provider: 'openstreetmap' });
+    // /config.json is read as it is: a value of another type must not break the map.
+    expect(basemapFor({ region: 'us-east-1', mapsApiKey: 42 as unknown as string })).toEqual({
+      provider: 'openstreetmap',
+    });
+  });
+
+  it('falls back to the Standard style for a style name it does not know', () => {
+    const basemap = basemapFor({ region: 'us-east-1', mapsApiKey: 'k', mapStyle: 'Neon' as never });
+    expect(basemap).toEqual({ provider: 'amazon', styleUrl: amazonStyleUrl('us-east-1', 'k', 'Standard') });
   });
 });

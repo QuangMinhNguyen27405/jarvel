@@ -1,69 +1,67 @@
-import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import type { DayPlan } from '@jarvel/shared';
-import { divIcon, latLngBounds, type FitBoundsOptions, type LatLngBounds } from 'leaflet';
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { dayParts } from './format.js';
-import { dayMap } from './map.js';
+import { dayMap, pathBounds, type Basemap } from './map.js';
+import { createDayMapView, type DayMapView, type MapLibre } from './map-view.js';
 
-// OpenStreetMap tiles: no API key and no cost. Their usage policy requires this attribution on the map.
-const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+const OPENSTREETMAP: Basemap = { provider: 'openstreetmap' };
 
-const FIT: FitBoundsOptions = { padding: [36, 36], maxZoom: 15 };
+interface BasemapChoice {
+  /** The base map a new map starts on. */
+  current(): Basemap;
+  /** Amazon Location could not be used: the maps drawn after this one start on OpenStreetMap. */
+  failed(): void;
+}
+
+const BasemapContext = createContext<BasemapChoice>({ current: () => OPENSTREETMAP, failed: () => {} });
+
+/**
+ * Says where the maps inside it get their picture. main.tsx sets it from /config.json: Amazon Location when the
+ * config has a maps key, OpenStreetMap (no key, no cost) otherwise. Once Amazon Location has failed on this page,
+ * for example because it refused the key, the next maps start on OpenStreetMap and do not fail the same way again.
+ */
+export function BasemapProvider({ basemap, children }: { basemap: Basemap; children: ReactNode }) {
+  const failed = useRef(false);
+  const choice = useMemo<BasemapChoice>(
+    () => ({
+      current: () => (failed.current ? OPENSTREETMAP : basemap),
+      failed: () => {
+        failed.current = true;
+      },
+    }),
+    [basemap],
+  );
+  return <BasemapContext.Provider value={choice}>{children}</BasemapContext.Provider>;
+}
 
 const canMeasure = () => typeof ResizeObserver !== 'undefined';
 
 /**
- * A teardrop pin drawn in CSS, so no marker image has to be bundled: teal with a white number for a stop, mustard
- * with a dark "H" for the hotel. The tip of the drop sits on the place.
+ * MapLibre is only fetched when a map is first shown, so the pages without a map do not carry it. Its worker file
+ * is named here because a bundler moves it: MapLibre cannot find it by itself.
  */
-function pin(label: string, hotel: boolean) {
-  return divIcon({
-    className: hotel ? 'map-pin map-pin--hotel' : 'map-pin',
-    html: `<span class="map-pin-drop"><span class="map-pin-label">${label}</span></span>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 36],
-    popupAnchor: [0, -34],
-  });
+async function loadMapLibre(): Promise<MapLibre> {
+  const [lib, worker] = await Promise.all([
+    import('maplibre-gl'),
+    import('maplibre-gl/dist/maplibre-gl-worker.mjs?url'),
+  ]);
+  lib.setWorkerUrl(worker.default);
+  return lib;
 }
 
 /**
- * Keeps the day in view when the map's box changes size: on a phone the map has its own tab and is hidden while
- * another tab shows, and a window can be resized. Leaflet then has to measure again and refit.
- */
-function KeepFitted({ bounds }: { bounds: LatLngBounds }) {
-  const map = useMap();
-  /** The box size the day was last fitted to; it outlives a re-subscription. */
-  const fitted = useRef<string>(undefined);
-  useEffect(() => {
-    if (!canMeasure()) return;
-    const box = map.getContainer();
-    if (fitted.current === undefined) {
-      const size = map.getSize();
-      fitted.current = `${size.x}x${size.y}`;
-    }
-    const observer = new ResizeObserver(() => {
-      const width = box.clientWidth;
-      const height = box.clientHeight;
-      if (width === 0 || height === 0) return; // hidden: refit once it shows again
-      // Leaflet's own size can be stale too: it measures on window resizes, even while the box is hidden.
-      const known = map.getSize();
-      const size = `${width}x${height}`;
-      if (size === fitted.current && known.x === width && known.y === height) return;
-      fitted.current = size;
-      map.invalidateSize({ pan: false });
-      map.fitBounds(bounds, { ...FIT, animate: false });
-    });
-    observer.observe(box);
-    return () => observer.disconnect();
-  }, [map, bounds]);
-  return null;
-}
-
-/**
- * True once the box has a size. Leaflet cannot place a map in a hidden (0 by 0) box, so the map is only created
- * when its tab is first shown. Without ResizeObserver (the test DOM) the box cannot be measured: true at once.
+ * True once the box has a size. A map cannot be placed in a hidden (0 by 0) box, so it is only created when its
+ * tab is first shown. Without ResizeObserver (the test DOM) the box cannot be measured: true at once.
  */
 function useShown(box: RefObject<HTMLElement | null>): boolean {
   const [shown, setShown] = useState(() => !canMeasure());
@@ -84,40 +82,38 @@ function useShown(box: RefObject<HTMLElement | null>): boolean {
 /** The day's stops on a map: the hotel, each stop numbered in visiting order, and a line joining them in order. */
 export function TripMap({ day }: { day: DayPlan }) {
   const { stops, path } = useMemo(() => dayMap(day), [day]);
-  const positions = useMemo(() => path.map((point): [number, number] => [point.lat, point.lng]), [path]);
-  const bounds = useMemo(() => (positions.length > 0 ? latLngBounds(positions) : undefined), [positions]);
+  const bounds = useMemo(() => pathBounds(path), [path]);
+  const basemap = useContext(BasemapContext);
   const frame = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
   const shown = useShown(frame);
-  if (stops.length === 0 || !bounds) return null;
+  const mapped = stops.length > 0 && bounds !== undefined;
+
+  useEffect(() => {
+    const box = canvas.current;
+    if (!shown || stops.length === 0 || !bounds || !box) return;
+    let view: DayMapView | undefined;
+    let left = false;
+    loadMapLibre()
+      .then((lib) => {
+        if (left) return;
+        view = createDayMapView(lib, box, { stops, path, bounds }, basemap.current(), (message) => {
+          basemap.failed();
+          console.error(message);
+        });
+      })
+      .catch((error: unknown) => console.error('The map could not be drawn.', error));
+    return () => {
+      left = true;
+      view?.remove();
+    };
+  }, [shown, stops, path, bounds, basemap]);
+
+  if (!mapped) return null;
   return (
     <div className="trip-map" role="region" aria-label={`Map of ${dayParts(day.date).label}`}>
       <div className="trip-map-frame" ref={frame}>
-        {shown ? (
-          <MapContainer bounds={bounds} boundsOptions={FIT} scrollWheelZoom={false} className="trip-map-canvas">
-            <TileLayer url={TILE_URL} attribution={ATTRIBUTION} />
-            {positions.length > 1 && (
-              <Polyline
-                positions={positions}
-                pathOptions={{ color: '#155E67', weight: 3, dashArray: '7 6', lineCap: 'round', lineJoin: 'round' }}
-              />
-            )}
-            {stops.map((stop) => (
-              <Marker
-                key={stop.id}
-                position={[stop.lat, stop.lng]}
-                icon={pin(stop.label, stop.kind === 'hotel')}
-                title={stop.title}
-              >
-                <Popup>
-                  {stop.label}. {stop.title}
-                </Popup>
-              </Marker>
-            ))}
-            <KeepFitted bounds={bounds} />
-          </MapContainer>
-        ) : (
-          <div className="trip-map-canvas" />
-        )}
+        <div className="trip-map-canvas" ref={canvas} />
       </div>
       <ul className="map-key">
         {stops.map((stop) => (

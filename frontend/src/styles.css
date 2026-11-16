@@ -1994,42 +1994,33 @@ html:root {
   font-family: var(--font-body);
 }
 
-.trip-map .leaflet-control-attribution {
+.trip-map .maplibregl-ctrl-attrib {
   background: rgba(255, 252, 246, 0.9);
   color: var(--ink-2);
+  font-family: var(--font-body);
   font-size: 11px;
 }
 
-.trip-map .leaflet-control-attribution a {
+.trip-map .maplibregl-ctrl-attrib a {
   color: var(--teal);
 }
 
-.trip-map .leaflet-bar {
+.trip-map .maplibregl-ctrl-group {
+  overflow: hidden;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
+  background: var(--card);
   box-shadow: var(--shadow);
 }
 
-.trip-map .leaflet-bar a {
+.trip-map .maplibregl-ctrl-group button {
   width: 44px;
   height: 44px;
-  line-height: 44px;
-  background: var(--card);
-  color: var(--ink);
-  font-size: 20px;
+  background-color: var(--card);
 }
 
-.trip-map .leaflet-bar a:first-child {
-  border-top-left-radius: var(--radius);
-  border-top-right-radius: var(--radius);
-}
-
-.trip-map .leaflet-bar a:last-child {
-  border-bottom-left-radius: var(--radius);
-  border-bottom-right-radius: var(--radius);
-}
-
-.trip-map .leaflet-popup-content-wrapper {
+.trip-map .maplibregl-popup-content {
+  padding: 10px 14px;
   border-radius: var(--radius);
   color: var(--ink);
   font-family: var(--font-body);
@@ -2037,10 +2028,13 @@ html:root {
   font-weight: 600;
 }
 
-/* Leaflet places the pin's outer box itself (with transform), so only the inner drop is turned. */
+/* MapLibre places the pin's outer box itself (with transform), so only the inner drop is turned. */
 .map-pin {
+  width: 30px;
+  height: 30px;
   border: 0;
   background: none;
+  cursor: pointer;
 }
 
 .map-pin-drop {

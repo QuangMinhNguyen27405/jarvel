@@ -1,24 +1,16 @@
 import type { PlanRecord, PlanSummary, TransitLeg } from '@jarvel/shared';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, createPlanApi, type PlanApi } from './api.js';
 import { App } from './App.js';
+import { basemapFor } from './map.js';
+import { OSM_STYLE } from './map-view.js';
+import { appMapLibre } from './test-maplibre.js';
+import { BasemapProvider } from './TripMap.js';
 
-// jsdom cannot draw a real map, so react-leaflet is replaced by plain elements that show what the map would hold.
-vi.mock('react-leaflet', () => ({
-  MapContainer: ({ children }: { children?: ReactNode }) => <div data-testid="map">{children}</div>,
-  TileLayer: ({ attribution }: { attribution: string }) => <span data-testid="tiles" data-attribution={attribution} />,
-  Polyline: ({ positions }: { positions: unknown[] }) => <span data-testid="line" data-points={positions.length} />,
-  Marker: ({ title, children }: { title: string; children?: ReactNode }) => (
-    <span data-testid="marker" title={title}>
-      {children}
-    </span>
-  ),
-  Popup: ({ children }: { children?: ReactNode }) => <span>{children}</span>,
-  // The map's resize helper asks for the map; jsdom has no ResizeObserver, so it never calls these.
-  useMap: () => ({ getContainer: () => document.createElement('div'), invalidateSize: () => {}, fitBounds: () => {} }),
-}));
+// jsdom cannot draw a real map, so MapLibre is replaced by a stand-in that puts the pins and a note of the line
+// into the page, and names the style it was asked to draw.
+vi.mock('maplibre-gl', async () => (await import('./test-maplibre.js')).appMapLibre.lib);
 
 afterEach(cleanup);
 
@@ -163,8 +155,8 @@ describe('the trip map (Nov 3 request)', () => {
     location: { lat, lng },
   });
 
-  it('shows one map per day with the hotel, numbered stops, a line and the OpenStreetMap credit', async () => {
-    const plan = record({
+  const mappedPlan = () =>
+    record({
       itinerary: {
         summary: 'Mapped trip',
         days: [
@@ -183,22 +175,80 @@ describe('the trip map (Nov 3 request)', () => {
         costs: { total: { low: 0, high: 0 } },
       } as unknown as PlanRecord['itinerary'],
     });
-    render(<App apiUrl="" session={session} api={fakeApi([plan])} />);
+
+  const pinTitles = async (map: HTMLElement) =>
+    (await within(map).findAllByTestId('marker')).map((pin) => pin.getAttribute('title'));
+
+  it('shows one map per day with the hotel, numbered stops, a line and the OpenStreetMap credit', async () => {
+    render(<App apiUrl="" session={session} api={fakeApi([mappedPlan()])} />);
     fireEvent.click(await screen.findByRole('button', { name: 'Trip A' }));
     const first = await screen.findByRole('region', { name: 'Map of Wed, Nov 18' });
-    expect(within(first).getAllByTestId('marker').map((m) => m.getAttribute('title'))).toEqual(['Check in', 'Library']);
+    expect(await pinTitles(first)).toEqual(['Check in', 'Library']);
     expect(within(first).getByText('1. Library')).toBeInTheDocument();
-    expect(within(first).getByTestId('line')).toHaveAttribute('data-points', '2');
-    expect(within(first).getByTestId('tiles').getAttribute('data-attribution')).toContain('OpenStreetMap');
+    expect(await within(first).findByTestId('line')).toHaveAttribute('data-points', '2');
+    // Without a maps key in the app's config, the map is OpenStreetMap, with its credit.
+    expect(within(first).getByTestId('map').dataset.style).toContain('OpenStreetMap');
     // Only the selected day's map is shown: the second day's map appears when that day is picked.
     expect(screen.queryByRole('region', { name: 'Map of Thu, Nov 19' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Thu, Nov 19' }));
     const second = await screen.findByRole('region', { name: 'Map of Thu, Nov 19' });
     expect(screen.queryByRole('region', { name: 'Map of Wed, Nov 18' })).not.toBeInTheDocument();
-    expect(within(second).getAllByTestId('marker').map((m) => m.getAttribute('title'))).toEqual(['Cafe', 'Back at hotel']);
+    expect(await pinTitles(second)).toEqual(['Cafe', 'Back at hotel']);
     expect(within(second).getByText('1. Cafe')).toBeInTheDocument();
     expect(within(second).getByText('H. Back at hotel')).toBeInTheDocument();
-    expect(within(second).getByTestId('tiles').getAttribute('data-attribution')).toContain('OpenStreetMap');
+    expect(within(second).getByTestId('map').dataset.style).toContain('OpenStreetMap');
+    // The first day's map was taken down with its page, not left behind.
+    expect(screen.getAllByTestId('map')).toHaveLength(1);
+  });
+
+  it('draws the Amazon Location map when the app’s config has a maps key', async () => {
+    const basemap = basemapFor({ region: 'us-east-1', mapsApiKey: 'v1.public.test' });
+    render(
+      <BasemapProvider basemap={basemap}>
+        <App apiUrl="" session={session} api={fakeApi([mappedPlan()])} />
+      </BasemapProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Trip A' }));
+    const first = await screen.findByRole('region', { name: 'Map of Wed, Nov 18' });
+    expect(await pinTitles(first)).toEqual(['Check in', 'Library']);
+    expect(within(first).getByTestId('map').dataset.style).toBe(
+      'https://maps.geo.us-east-1.amazonaws.com/v2/styles/Standard/descriptor?key=v1.public.test',
+    );
+    expect(await within(first).findByTestId('line')).toHaveAttribute('data-points', '2');
+  });
+
+  it('starts the next maps on OpenStreetMap once Amazon Location has refused the key', async () => {
+    // Hold each map's first draw, so the refusal arrives while the map is still loading.
+    appMapLibre.loads = false;
+    const said = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      render(
+        <BasemapProvider basemap={basemapFor({ region: 'us-east-1', mapsApiKey: 'v1.public.test' })}>
+          <App apiUrl="" session={session} api={fakeApi([mappedPlan()])} />
+        </BasemapProvider>,
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'Trip A' }));
+      const first = await screen.findByRole('region', { name: 'Map of Wed, Nov 18' });
+      await within(first).findByTestId('map');
+      const firstMap = appMapLibre.maps.at(-1)!;
+      expect(firstMap.options.style).toContain('amazonaws.com');
+      firstMap.emit('style.load');
+      firstMap.emit('error', { error: Object.assign(new Error('Forbidden'), { status: 403 }) });
+      expect(firstMap.styles).toEqual([firstMap.options.style, OSM_STYLE]);
+      expect(said).toHaveBeenCalledTimes(1);
+      expect(said.mock.calls[0]![0]).toContain('Showing OpenStreetMap instead');
+
+      fireEvent.click(screen.getByRole('button', { name: 'Thu, Nov 19' }));
+      const second = await screen.findByRole('region', { name: 'Map of Thu, Nov 19' });
+      await within(second).findByTestId('map');
+      const secondMap = appMapLibre.maps.at(-1)!;
+      expect(secondMap).not.toBe(firstMap);
+      expect(secondMap.options.style).toEqual(OSM_STYLE);
+      expect(said).toHaveBeenCalledTimes(1);
+    } finally {
+      appMapLibre.loads = true;
+      said.mockRestore();
+    }
   });
 
   it('shows no map for a day whose items have no location', async () => {

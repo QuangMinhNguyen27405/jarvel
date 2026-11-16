@@ -45,7 +45,9 @@ What is different from the real thing:
 - **The AI model is a scripted stand-in**, so no Bedrock call is made. The scheduling, subway routing, safety rules
   and final check are the real code.
 - **Only this computer can reach it.** The API listens on `127.0.0.1`.
-- **The maps need the internet.** They load OpenStreetMap tiles.
+- **The maps need the internet.** Locally they are drawn from OpenStreetMap tiles. With a deployed stack's maps key
+  they are drawn from Amazon Location (see
+  [Using the web app with a deployed API](#using-the-web-app-with-a-deployed-api)).
 
 The local server must never be deployed, because it has no real sign-in. The settings (`PORT`, `HOST`,
 `DEV_PLANNER_DELAY_MS`, `DEMO_EMAIL`, `DEV_SEED_DEMO`) and the demo account are described in
@@ -71,7 +73,7 @@ The repository is an npm-workspaces monorepo.
 | `shared`   | `@jarvel/shared`   | The types and constants the other packages share.                                            |
 | `backend`  | `@jarvel/backend`  | The API and planner Lambda code, the Boston data, the admin script and the local server.     |
 | `infra`    | `@jarvel/infra`    | The AWS CDK v2 stack: one stack per stage (`Jarvel-staging`, `Jarvel-prod`) in `us-east-1`.  |
-| `frontend` | `@jarvel/frontend` | The web app: React, Vite and Leaflet maps, with Cognito sign-in through Amplify.             |
+| `frontend` | `@jarvel/frontend` | The web app: React, Vite and MapLibre maps, with Cognito sign-in through Amplify.            |
 | `aidlc`    | none               | The AI-DLC workflow records for this work: requirements, the code plan and the reviews.      |
 | `docs`     | none               | `ARCHITECTURE.md`, an earlier design sketch. It describes more than was built; see the note. |
 
@@ -120,7 +122,11 @@ npm run deploy -w @jarvel/infra -- -c stage=staging -c alertEmail=you@example.co
 - **Read the diff before every deploy**, especially IAM, network access and encryption changes. Do not skip the
   confirmation with `--require-approval never`.
 - The stack creates the user pool, the plans table, the two functions, the HTTP API, two alarms with an email
-  alert, and a budget that emails you when the account's spend passes **$20** of the **$25** monthly cap.
+  alert, a maps key for the web app, and a budget that emails you when the account's spend passes **$20** of the
+  **$25** monthly cap.
+- The maps key can only read Amazon Location map tiles, and only from a page at `http://localhost` (any port). To
+  allow other addresses, list up to five, with `*` as a wildcard:
+  `-c "mapReferers=https://your-site.example/* http://localhost:*"`.
 - The stack does not host the web app. To use the web app with a deployed API, see the next section.
 - Accounts are invite-only. After deploying, invite people with the
   [admin script](backend/README.md#admin-script).
@@ -153,12 +159,27 @@ Create `frontend/public/config.json` from the stack outputs, then run the web ap
   "region": "us-east-1",
   "apiUrl": "https://abc123.execute-api.us-east-1.amazonaws.com",
   "userPoolId": "us-east-1_XXXXXXXXX",
-  "userPoolClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx"
+  "userPoolClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "mapsApiKey": "v1.public.xxxxxxxx"
 }
 ```
 
 `apiUrl` is the `ApiUrl` output without the trailing slash. With this file the web app shows the real Cognito
 sign-in. Without it, or with `"mock": true`, the web app runs in local mode.
+
+`mapsApiKey` makes the maps Amazon Location's. Leave it out and they stay OpenStreetMap. The stack outputs only the
+key's name (`MapsApiKeyName`), so read its value with:
+
+```sh
+aws location describe-key --key-name jarvel-staging-maps --query Key --output text
+```
+
+- The key is a browser key: anyone who opens the page can read it. That is why the stack limits it to reading map
+  tiles from the listed addresses, and why it gives no access to any Jarvel data.
+- Open the web app at `http://localhost:5173`, not `http://127.0.0.1:5173`. Amazon Location refuses the key for an
+  address the stack does not list, and the maps then fall back to OpenStreetMap with one line in the browser
+  console.
+- `"mapStyle"` picks the look: `Standard` (the default), `Monochrome`, `Hybrid` or `Satellite`.
 
 ## Rules for this repository
 

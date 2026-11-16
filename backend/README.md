@@ -52,7 +52,8 @@ npm run dev -w @jarvel/frontend       # web app on http://localhost:5173 (second
   transit, safety rules and final check are the real code.
 - **Only this computer can reach it.** It listens on `127.0.0.1`. `HOST` changes that (for example `HOST=0.0.0.0`
   to try it from a phone on your network), but anyone on that network can then use it with any name.
-- Each day of a finished plan shows a map in the web app (OpenStreetMap tiles, loaded from the internet).
+- Each day of a finished plan shows a map in the web app. Locally it is drawn from OpenStreetMap tiles, loaded from
+  the internet.
 - `PORT` changes the port. **Never deploy the dev server**: it has no real sign-in.
 
 ### Trying a real Anthropic key locally
@@ -344,6 +345,10 @@ address when actual spend passes **$20**.
 - To use another model, deploy with `-c modelId=<id>` and give its prices so the recorded cost is right:
   `-c modelInputPricePerMTok=3 -c modelOutputPricePerMTok=15`. On Bedrock, the IAM policy then allows only that
   model. A model id that belongs to the other provider is refused when the stack is synthesized.
+- **The maps in the web app are Amazon Location map tiles** once the web app has the stack's maps key, at **$0.04
+  per 1,000 tiles** in `us-east-1` (AWS price list, November 2026). Opening one day's map loads fewer than a dozen
+  tiles, and moving or zooming it loads more. This is AWS spend, so the Budget alert covers it. Without the key the maps
+  are OpenStreetMap and cost nothing.
 - Other cost guards: 3 plans per person per month, a 5 requests/second API throttle, on-demand DynamoDB and
   2-week log retention.
 
@@ -413,7 +418,7 @@ npm run deploy -w @jarvel/infra -- -c stage=staging -c alertEmail=you@example.co
 - **Review the diff** before every deploy, especially IAM, network and encryption changes. The deploy asks you to
   confirm security-related changes; do not skip that with `--require-approval never`.
 - After the first deploy, confirm the SNS email subscription (AWS sends a confirmation email to `alertEmail`).
-- The stack outputs (`ApiUrl`, `UserPoolId`, `UserPoolClientId`, `TableName`) are written to
+- The stack outputs (`ApiUrl`, `UserPoolId`, `UserPoolClientId`, `TableName`, `MapsApiKeyName`) are written to
   `infra/cdk-outputs.json`. That file is git-ignored; **never commit it**, nor any `.env` file or credentials.
 - Each stage creates its own budget, both covering the whole account, so with two stages you get two alert emails
   at $20.

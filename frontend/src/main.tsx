@@ -10,17 +10,21 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.js';
 import { createDevSignIn, loadCognitoSignIn, type SignInComponent } from './auth.js';
 import { loadConfig } from './config.js';
+import { basemapFor, type Basemap } from './map.js';
+import { BasemapProvider } from './TripMap.js';
 import { Alert, Loading } from './ui.js';
 import './styles.css';
 
+type Started = { apiUrl: string; SignIn: SignInComponent; basemap: Basemap };
+
 function Root() {
-  const [state, setState] = useState<{ apiUrl: string; SignIn: SignInComponent } | { error: string } | undefined>();
+  const [state, setState] = useState<Started | { error: string } | undefined>();
   useEffect(() => {
     loadConfig()
       .then(async (config) => {
         // Local development: the sign-in page asks the local API at this address for its demo account.
         const SignIn = config.mock ? createDevSignIn(config.apiUrl) : await loadCognitoSignIn(config);
-        setState({ apiUrl: config.apiUrl, SignIn });
+        setState({ apiUrl: config.apiUrl, SignIn, basemap: basemapFor(config) });
       })
       .catch((error: Error) => setState({ error: error.message }));
   }, []);
@@ -32,8 +36,12 @@ function Root() {
       </div>
     );
   }
-  const { SignIn, apiUrl } = state;
-  return <SignIn>{(session) => <App apiUrl={apiUrl} session={session} />}</SignIn>;
+  const { SignIn, apiUrl, basemap } = state;
+  return (
+    <BasemapProvider basemap={basemap}>
+      <SignIn>{(session) => <App apiUrl={apiUrl} session={session} />}</SignIn>
+    </BasemapProvider>
+  );
 }
 
 createRoot(document.getElementById('root')!).render(

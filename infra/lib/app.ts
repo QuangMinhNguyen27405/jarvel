@@ -1,9 +1,17 @@
 // Builds the CDK app from context values: `stage` (staging | prod), `alertEmail` (required), `aiProvider`
-// (bedrock | anthropic) and `modelId`.
+// (bedrock | anthropic), `modelId` and `mapReferers` (the pages that may use the maps key).
 //   npx cdk deploy -c stage=staging -c alertEmail=you@example.com
 import { App } from 'aws-cdk-lib';
 import { z } from 'zod';
-import { AI_PROVIDERS, DEPLOY_REGION, JarvelStack, STAGES, type AiProvider } from './jarvel-stack.js';
+import {
+  AI_PROVIDERS,
+  DEPLOY_REGION,
+  JarvelStack,
+  MAP_REFERER_PATTERN,
+  MAX_MAP_REFERERS,
+  STAGES,
+  type AiProvider,
+} from './jarvel-stack.js';
 
 /** Default model on Amazon Bedrock: Claude Haiku 4.5 through the US cross-Region inference profile. */
 export const DEFAULT_MODEL_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
@@ -23,6 +31,15 @@ const contextSchema = z.strictObject({
     .string()
     .regex(/^[A-Za-z0-9.:-]+$/, { error: 'modelId must be a model id (letters, digits, dots, colons and hyphens)' })
     .optional(),
+  mapReferers: z
+    .array(
+      z.string().regex(MAP_REFERER_PATTERN, {
+        error: 'each mapReferers entry must be an address pattern without spaces, for example https://example.com/*',
+      }),
+    )
+    .min(1, { error: 'mapReferers must name at least one page' })
+    .max(MAX_MAP_REFERERS, { error: `mapReferers can name at most ${MAX_MAP_REFERERS} pages` })
+    .optional(),
   modelInputPricePerMTok: z
     .string()
     .regex(/^\d+(\.\d+)?$/)
@@ -38,6 +55,13 @@ function contextString(app: App, key: string): string | undefined {
   return value === undefined || value === null || value === '' ? undefined : String(value);
 }
 
+/** A list from the context: an array in cdk.json, or one value with spaces between the entries on the command line. */
+function contextList(app: App, key: string): string[] | undefined {
+  const value: unknown = app.node.tryGetContext(key);
+  if (value === undefined || value === null || value === '') return undefined;
+  return Array.isArray(value) ? value.map(String) : String(value).trim().split(/\s+/);
+}
+
 /** Reads and checks the context, failing fast with every problem named, then adds the stack for that stage. */
 export function createApp(app: App = new App()): { app: App; stack: JarvelStack } {
   const parsed = contextSchema.safeParse({
@@ -45,6 +69,7 @@ export function createApp(app: App = new App()): { app: App; stack: JarvelStack 
     alertEmail: contextString(app, 'alertEmail'),
     aiProvider: contextString(app, 'aiProvider') ?? 'bedrock',
     modelId: contextString(app, 'modelId'),
+    mapReferers: contextList(app, 'mapReferers'),
     modelInputPricePerMTok: contextString(app, 'modelInputPricePerMTok'),
     modelOutputPricePerMTok: contextString(app, 'modelOutputPricePerMTok'),
   });
@@ -52,7 +77,7 @@ export function createApp(app: App = new App()): { app: App; stack: JarvelStack 
     const problems = parsed.error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`);
     throw new Error(`Invalid CDK context:\n  ${problems.join('\n  ')}`);
   }
-  const { stage, alertEmail, aiProvider, modelInputPricePerMTok, modelOutputPricePerMTok } = parsed.data;
+  const { stage, alertEmail, aiProvider, mapReferers, modelInputPricePerMTok, modelOutputPricePerMTok } = parsed.data;
   const modelId = parsed.data.modelId ?? DEFAULT_MODEL_IDS[aiProvider];
   // A Bedrock id sent to the Anthropic API (or the other way round) fails every plan, so it is refused here.
   if ((aiProvider === 'anthropic') !== /^claude-[a-z0-9-]+$/.test(modelId)) {
@@ -69,6 +94,7 @@ export function createApp(app: App = new App()): { app: App; stack: JarvelStack 
     alertEmail,
     aiProvider,
     modelId,
+    mapReferers,
     modelPrices:
       modelInputPricePerMTok && modelOutputPricePerMTok
         ? { inputPerMTok: modelInputPricePerMTok, outputPerMTok: modelOutputPricePerMTok }

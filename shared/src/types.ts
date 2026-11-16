@@ -424,6 +424,13 @@ export interface FrontendConfig {
   userPoolId: string;
   userPoolClientId: string;
   mock?: boolean; // local dev: skip auth + use in-browser mock API with fixture data
+  /**
+   * Amazon Location API key for the map. It is a browser key: the stack limits it to reading map tiles. With it and
+   * `region` the map is Amazon Location's; without it the map is OpenStreetMap.
+   */
+  mapsApiKey?: string;
+  /** Amazon Location map style. Default: Standard. */
+  mapStyle?: 'Standard' | 'Monochrome' | 'Hybrid' | 'Satellite';
 }
 
 // ---------------------------------------------------------------------------

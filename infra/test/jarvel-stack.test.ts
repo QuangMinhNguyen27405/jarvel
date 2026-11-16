@@ -6,7 +6,9 @@ import {
   anthropicKeyParameterName,
   BUDGET_ALERT_USD,
   bedrockModelArns,
+  DEFAULT_MAP_REFERERS,
   JarvelStack,
+  mapsKeyName,
   MONTHLY_BUDGET_USD,
 } from '../lib/jarvel-stack.js';
 
@@ -182,8 +184,57 @@ describe('JarvelStack (staging)', () => {
     });
   });
 
-  it('outputs the API URL, user pool, client and table name', () => {
-    for (const name of ['ApiUrl', 'UserPoolId', 'UserPoolClientId', 'TableName']) template.hasOutput(name, {});
+  it('outputs the API URL, user pool, client, table name and the name of the maps key', () => {
+    for (const name of ['ApiUrl', 'UserPoolId', 'UserPoolClientId', 'TableName', 'MapsApiKeyName']) {
+      template.hasOutput(name, {});
+    }
+  });
+
+  it('has a maps key that can only read Amazon Location map tiles, from the local web app', () => {
+    template.resourceCountIs('AWS::Location::APIKey', 1);
+    template.hasResourceProperties('AWS::Location::APIKey', {
+      KeyName: 'jarvel-staging-maps',
+      NoExpiry: true,
+      ForceUpdate: true,
+      ForceDelete: true,
+      Restrictions: {
+        AllowActions: ['geo-maps:GetTile'],
+        AllowResources: ['arn:aws:geo-maps:us-east-1::provider/default'],
+        AllowReferers: ['http://localhost:*'],
+      },
+    });
+    expect(mapsKeyName('prod')).toBe('jarvel-prod-maps');
+    expect(DEFAULT_MAP_REFERERS).toEqual(['http://localhost:*']);
+    // The key's value is never in the template: only its name is an output.
+    template.hasOutput('MapsApiKeyName', { Value: Match.objectLike({ Ref: Match.stringLikeRegexp('MapsKey') }) });
+    expect(JSON.stringify(template.toJSON())).not.toMatch(/v1\.public\./);
+  });
+});
+
+describe('the pages that may use the maps key (mapReferers)', () => {
+  const base = { stage: 'staging', alertEmail: 'admin@example.com' };
+  const referers = (context: Record<string, unknown>): unknown => {
+    const keys = synth({ ...base, ...context }).template.findResources('AWS::Location::APIKey');
+    const [key] = Object.values(keys) as { Properties: { Restrictions: { AllowReferers: string[] } } }[];
+    return key!.Properties.Restrictions.AllowReferers;
+  };
+
+  it('takes a list from cdk.json, or one value with spaces between the pages from the command line', () => {
+    expect(referers({ mapReferers: ['https://jarvel.example.com/*', 'http://localhost:*'] })).toEqual([
+      'https://jarvel.example.com/*',
+      'http://localhost:*',
+    ]);
+    expect(referers({ mapReferers: ' https://jarvel.example.com/*   http://localhost:5173/* ' })).toEqual([
+      'https://jarvel.example.com/*',
+      'http://localhost:5173/*',
+    ]);
+  });
+
+  it('refuses a page with a character Amazon Location does not allow, an empty list and more than five pages', () => {
+    expect(() => synth({ ...base, mapReferers: ['https://a.example/<b>'] })).toThrow(/mapReferers.*address pattern/s);
+    expect(() => synth({ ...base, mapReferers: [] })).toThrow(/mapReferers must name at least one page/);
+    const six = ['a', 'b', 'c', 'd', 'e', 'f'].map((name) => `https://${name}.example.com/*`);
+    expect(() => synth({ ...base, mapReferers: six })).toThrow(/mapReferers can name at most 5 pages/);
   });
 });
 
