@@ -11,13 +11,40 @@ import type {
   StopReason as ConverseStopReason,
 } from '@aws-sdk/client-bedrock-runtime';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
-import type { ConverseFn } from './ai.js';
+import type { ConverseFn, ModelPrices } from './ai.js';
 
-/** Default model on the Anthropic API: Claude Haiku 4.5, the same model the Bedrock default runs (D4). */
-export const DEFAULT_ANTHROPIC_MODEL_ID = 'claude-haiku-4-5';
+/** Default model on the Anthropic API: Claude Sonnet 5.5. */
+export const DEFAULT_ANTHROPIC_MODEL_ID = 'claude-sonnet-5-5';
+/** The earlier default, still supported (`MODEL_ID=claude-haiku-4-5`). It is the model the Bedrock default runs. */
+export const HAIKU_4_5_MODEL_ID = 'claude-haiku-4-5';
 
 /** One request may take this long; three attempts then still fit in the planner's 5 minutes. */
 export const REQUEST_TIMEOUT_MS = 90_000;
+
+/**
+ * Claude Sonnet 5.5 thinks before it answers, and that thinking counts toward the request's token limit. This is
+ * added to the planner's own limit so a plan is not cut off by it. Only tokens that are used are billed.
+ */
+export const THINKING_TOKEN_ALLOWANCE = 4_000;
+
+/** How much thinking to ask for. `low` is the setting the Anthropic guide gives for choosing-and-extracting work. */
+export const EFFORT = 'low';
+
+const SONNET_5_5_PRICES: ModelPrices = { inputPerMillionTokens: 2, outputPerMillionTokens: 10 };
+const HAIKU_4_5_PRICES: ModelPrices = { inputPerMillionTokens: 1, outputPerMillionTokens: 5 };
+
+/** Claude Haiku 4.5 by its alias or a dated id. It takes a forced tool call and has no effort setting. */
+function isHaiku45(modelId: string): boolean {
+  return modelId === HAIKU_4_5_MODEL_ID || modelId.startsWith(`${HAIKU_4_5_MODEL_ID}-`);
+}
+
+/**
+ * USD per million tokens on the Anthropic API: Claude Haiku 4.5's prices for that model, and Claude Sonnet 5.5's
+ * for every other id. For another model, set MODEL_INPUT_PRICE_PER_MTOK and MODEL_OUTPUT_PRICE_PER_MTOK.
+ */
+export function anthropicPrices(modelId: string): ModelPrices {
+  return isHaiku45(modelId) ? HAIKU_4_5_PRICES : SONNET_5_5_PRICES;
+}
 
 export type SendMessageFn = (
   body: Anthropic.MessageCreateParamsNonStreaming,
@@ -33,6 +60,11 @@ function textOf(block: { text?: string }, where: string): string {
 /**
  * Turns the planner's Converse request into a Messages request. `temperature` is left out on purpose: the current
  * Anthropic API version rejects sampling settings on every model, so this path samples with the model's defaults.
+ *
+ * The planner asks for a forced tool call. Claude Haiku 4.5 takes it as it is. Claude Sonnet 5.5 answers a forced
+ * tool call with HTTP 400, so for it (and any other model id) the tool is only offered: the system prompt already
+ * says to answer by calling it, and lib/ai.ts asks again when an answer comes without the call. That request also
+ * asks for little thinking and has room for it in the token limit.
  */
 export function toMessagesRequest(input: ConverseCommandInput): Anthropic.MessageCreateParamsNonStreaming {
   const maxTokens = input.inferenceConfig?.maxTokens;
@@ -54,19 +86,21 @@ export function toMessagesRequest(input: ConverseCommandInput): Anthropic.Messag
   });
   const choice = input.toolConfig?.toolChoice;
   const forcedTool = choice?.tool?.name;
+  const forcedChoice: Pick<Anthropic.MessageCreateParamsNonStreaming, 'tool_choice'> = forcedTool
+    ? { tool_choice: { type: 'tool', name: forcedTool } }
+    : choice?.any
+      ? { tool_choice: { type: 'any' } }
+      : {};
+  const haiku45 = isHaiku45(input.modelId);
   return {
     model: input.modelId,
-    max_tokens: maxTokens,
+    max_tokens: haiku45 ? maxTokens : maxTokens + THINKING_TOKEN_ALLOWANCE,
     ...(input.system?.length
       ? { system: input.system.map((block) => textOf(block, 'the system prompt')).join('\n') }
       : {}),
     messages,
     ...(tools.length > 0 ? { tools } : {}),
-    ...(forcedTool
-      ? { tool_choice: { type: 'tool', name: forcedTool } }
-      : choice?.any
-        ? { tool_choice: { type: 'any' } }
-        : {}),
+    ...(haiku45 ? forcedChoice : { output_config: { effort: EFFORT } }),
   };
 }
 
@@ -80,7 +114,11 @@ const STOP_REASONS: Record<NonNullable<Anthropic.Message['stop_reason']>, Conver
   model_context_window_exceeded: 'model_context_window_exceeded',
 };
 
-/** Turns a Messages response into the Converse shape lib/ai.ts reads: the tool call, any text, and the token counts. */
+/**
+ * Turns a Messages response into the Converse shape lib/ai.ts reads: the tool call, any text, and the token counts.
+ * Blocks are read by their type, because an answer from a thinking model starts with thinking blocks. Those are
+ * left out; their tokens are part of the output count, so they are in the cost.
+ */
 export function toConverseOutput(message: Anthropic.Message, latencyMs = 0): ConverseCommandOutput {
   const content: ContentBlock[] = [];
   for (const block of message.content) {

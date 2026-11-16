@@ -103,8 +103,11 @@ describe('local dev server: trying a real AI (DEV_AI)', () => {
 
   it('uses the Anthropic API with the key from the environment when asked', () => {
     const ai = devAiFromEnv({ DEV_AI: 'anthropic', ANTHROPIC_API_KEY: ' a-key\n' });
-    expect(ai?.modelId).toBe('claude-haiku-4-5');
+    expect(ai?.modelId).toBe('claude-sonnet-5-5');
+    expect(ai?.prices).toEqual({ inputPerMillionTokens: 2, outputPerMillionTokens: 10 });
     expect(ai?.converse).toBeTypeOf('function');
+    const haiku = devAiFromEnv({ DEV_AI: 'anthropic', ANTHROPIC_API_KEY: 'a-key', MODEL_ID: 'claude-haiku-4-5' });
+    expect(haiku?.prices).toEqual({ inputPerMillionTokens: 1, outputPerMillionTokens: 5 });
     expect(
       devAiFromEnv({ DEV_AI: 'anthropic', ANTHROPIC_API_KEY: 'a-key', MODEL_ID: 'claude-haiku-5-5' })?.modelId,
     ).toBe('claude-haiku-5-5');
@@ -123,6 +126,7 @@ describe('local dev server: trying a real AI (DEV_AI)', () => {
     const scripted = scriptedConverse(0);
     const ai: DevAi = {
       modelId: 'claude-haiku-4-5',
+      prices: { inputPerMillionTokens: 1, outputPerMillionTokens: 5 },
       converse: (request, requestOptions) => {
         asked.push(request.modelId);
         return scripted(request, requestOptions);

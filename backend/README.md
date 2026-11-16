@@ -79,14 +79,16 @@ DEV_AI=anthropic npm run dev -w @jarvel/backend
 ```
 
 - The start-up lines say which AI is in use. **Every plan is then a paid call**, and the demo trip is built when
-  the server starts, so each start is one call (about a cent or less with the default model). `DEV_SEED_DEMO=0`
-  starts without it.
+  the server starts, so each start is one call. With the default model, Claude Sonnet 5.5, one attempt cannot cost
+  more than about 6 cents (its token limit) and is expected to cost a cent or two. `DEV_SEED_DEMO=0` starts
+  without it.
 - **The key works** when the log shows `"status":"SUCCEEDED"` with an `aiCostUSD` above 0, and the trip opens in
   the web app.
 - **The key is refused** when the log shows `plan build failed` with `AnthropicAuthenticationError`. The plan ends
   `FAILED` and nothing is charged. `AnthropicNotFoundError` means the key's account cannot use the model.
 - `DEV_AI` has to be set by name. A key that only happens to be in the environment is never used.
-- `MODEL_ID` tries another Anthropic model, for example `MODEL_ID=claude-haiku-5-5`.
+- `MODEL_ID` tries another Anthropic model, for example `MODEL_ID=claude-haiku-4-5`, the earlier default at half
+  the price.
 - To go back to the stand-in, close the terminal, or remove both variables
   (`Remove-Item Env:ANTHROPIC_API_KEY, Env:DEV_AI` in PowerShell).
 
@@ -328,23 +330,28 @@ To replace them:
 
 ## Cost model and `MODEL_ID`
 
-The total budget is **$25 a month** for everything, including tests and hosting. An AWS Budget emails the alert
-address when actual spend passes **$20**.
+There are two budgets. AWS, including hosting, has **$25 a month**, and an AWS Budget emails the alert address
+when actual spend passes **$20**. The AI is paid to Anthropic, not AWS, and has about **$50 a month** of its own.
 
-- `MODEL_ID` is the model `PlannerFn` calls. The default is Claude Haiku 4.5 on either provider: `claude-haiku-4-5`
-  on the Anthropic API, and `us.anthropic.claude-haiku-4-5-20251001-v1:0` (a US cross-Region inference profile) on
-  Amazon Bedrock. Both are priced at **$1 per million input tokens and $5 per million output tokens**. Check these
-  prices on the provider's pricing page before relying on them.
+- `MODEL_ID` is the model `PlannerFn` calls. On the Anthropic API the default is Claude Sonnet 5.5
+  (`claude-sonnet-5-5`), at **$2 per million input tokens and $10 per million output tokens**. On Amazon Bedrock it
+  is Claude Haiku 4.5 (`us.anthropic.claude-haiku-4-5-20251001-v1:0`, a US cross-Region inference profile), at $1
+  and $5. Check these prices on the provider's pricing page before relying on them.
+- Claude Sonnet 5.5 thinks briefly before it answers. That thinking is billed as output tokens and is part of
+  `aiCostUSD`. One attempt is capped at 5,500 output tokens, which is $0.055.
 - Each plan makes one AI call, plus at most 2 retries when the answer is unusable or the AI service is busy. The
   scheduler, transit routing and safety checks are plain code and cost nothing per plan.
 - **With the Anthropic API, the AI cost is billed by Anthropic, not AWS.** The AWS Budget does not see it, so it
-  is outside the $20 alert. Set a spend limit for the key's workspace in the Anthropic Console.
+  is outside the $20 alert. Set a spend limit of $50 a month for the key's workspace in the Anthropic Console.
+- The plan limit keeps the AI cost far below that. Ten people at 3 plans a month are 30 plans. If every one of
+  them used all three attempts at the token limit, that would be 90 attempts at about 6 cents: about $5.40.
 - Each plan records its own cost in `aiCostUSD`: input tokens × input price + output tokens × output price, summed
-  over every attempt. For example, 10,000 input and 1,500 output tokens at the default prices cost
-  $0.0100 + $0.0075 = $0.0175.
+  over every attempt. For example, 10,000 input and 1,500 output tokens at Claude Sonnet 5.5's prices cost
+  $0.0200 + $0.0150 = $0.0350.
 - To use another model, deploy with `-c modelId=<id>` and give its prices so the recorded cost is right:
-  `-c modelInputPricePerMTok=3 -c modelOutputPricePerMTok=15`. On Bedrock, the IAM policy then allows only that
-  model. A model id that belongs to the other provider is refused when the stack is synthesized.
+  `-c modelInputPricePerMTok=3 -c modelOutputPricePerMTok=15`. Claude Haiku 4.5 on the Anthropic API
+  (`-c modelId=claude-haiku-4-5`) needs no prices, because the code knows them. On Bedrock, the IAM policy then
+  allows only that model. A model id that belongs to the other provider is refused when the stack is synthesized.
 - **The maps in the web app are Amazon Location map tiles** once the web app has the stack's maps key, at **$0.04
   per 1,000 tiles** in `us-east-1` (AWS price list, November 2026). Opening one day's map loads fewer than a dozen
   tiles, and moving or zooming it loads more. This is AWS spend, so the Budget alert covers it. Without the key the maps
@@ -369,6 +376,10 @@ an adapter in `src/lib/anthropic.ts`. Two things differ on the Anthropic path:
   to Anthropic, under the terms of the key's Anthropic account.
 - No `temperature` is sent, because the current Anthropic API version rejects it. The model samples with its
   defaults; every answer is still checked against the catalog before it is used.
+- Claude Sonnet 5.5 refuses a request that forces a tool call, so the plan tool is offered and the instructions
+  ask for it. An answer that comes without the call is asked again, as one of the two retries. The request also
+  asks for little thinking (`effort: low`) and leaves room for it in the token limit. Claude Haiku 4.5 still gets
+  the forced call and no effort setting.
 
 ### Storing the Anthropic API key
 
@@ -394,7 +405,7 @@ aws ssm put-parameter --region us-east-1 --type SecureString `
   --name /jarvel/staging/anthropic-api-key --value ([System.Net.NetworkCredential]::new('', $key).Password)
 ```
 
-- Use a key made only for Jarvel, in its own Anthropic Console workspace with a spend limit, so it can be revoked
+- Use a key made only for Jarvel, in its own Anthropic Console workspace with a $50 monthly spend limit, so it can be revoked
   without touching anything else. **Anyone with administrator access to the AWS account can read the parameter.**
 - To replace the key, run the same command with `--overwrite`. `PlannerFn` reads the key when it starts and reads
   it again after Anthropic refuses it, so a replaced key needs no deploy.

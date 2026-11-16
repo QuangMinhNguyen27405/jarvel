@@ -15,8 +15,11 @@ import {
 import {
   anthropicFromApiKey,
   anthropicFromParameterStore,
+  anthropicPrices,
   createAnthropicConverse,
   DEFAULT_ANTHROPIC_MODEL_ID,
+  HAIKU_4_5_MODEL_ID,
+  THINKING_TOKEN_ALLOWANCE,
   toConverseOutput,
   toMessagesRequest,
   toServiceError,
@@ -87,8 +90,46 @@ beforeEach(() => {
 });
 
 describe('toMessagesRequest', () => {
-  it('sends the planner request as one Messages request with the forced tool', () => {
+  it('sends the planner request to Claude Sonnet 5.5 with the tool offered, not forced', () => {
     const body = toMessagesRequest(buildConverseInput(input, DEFAULT_ANTHROPIC_MODEL_ID));
+    expect(body.model).toBe('claude-sonnet-5-5');
+    // Sonnet 5.5 answers a forced tool call with HTTP 400. The system prompt asks for the call instead.
+    expect(body).not.toHaveProperty('tool_choice');
+    expect(body.system).toContain(`Answer only by calling the ${TOOL_NAME} tool.`);
+    expect(body.tools).toHaveLength(1);
+    // It thinks before answering: little thinking is asked for, and the token limit has room for it.
+    expect(body.output_config).toEqual({ effort: 'low' });
+    expect(THINKING_TOKEN_ALLOWANCE).toBe(4000);
+    expect(body.max_tokens).toBe(1500 + THINKING_TOKEN_ALLOWANCE);
+    expect(body).not.toHaveProperty('thinking');
+  });
+
+  it('treats a model id it does not know like Sonnet 5.5, whatever tool choice was asked for', () => {
+    const body = toMessagesRequest({
+      modelId: 'claude-haiku-5-5',
+      inferenceConfig: { maxTokens: 10 },
+      toolConfig: {
+        tools: [{ toolSpec: { name: 'a', inputSchema: { json: { type: 'object' } } } }],
+        toolChoice: { any: {} },
+      },
+    });
+    expect(body).not.toHaveProperty('tool_choice');
+    expect(body).toMatchObject({ max_tokens: 10 + THINKING_TOKEN_ALLOWANCE, output_config: { effort: 'low' } });
+  });
+
+  it.each([HAIKU_4_5_MODEL_ID, 'claude-haiku-4-5-20251001'])(
+    'sends the planner request to %s as before: the forced tool, no effort setting',
+    (modelId) => {
+      const body = toMessagesRequest(buildConverseInput(input, modelId));
+      expect(body.model).toBe(modelId);
+      expect(body.max_tokens).toBe(1500);
+      expect(body.tool_choice).toEqual({ type: 'tool', name: TOOL_NAME });
+      expect(body).not.toHaveProperty('output_config');
+    },
+  );
+
+  it('sends the planner request as one Messages request with its tool', () => {
+    const body = toMessagesRequest(buildConverseInput(input, HAIKU_4_5_MODEL_ID));
     expect(body.model).toBe('claude-haiku-4-5');
     expect(body.max_tokens).toBe(1500);
     expect(body.system).toContain('Boston trip planner');
@@ -158,6 +199,19 @@ describe('toConverseOutput', () => {
     expect(output.usage).toEqual({ inputTokens: 1000, outputTokens: 200, totalTokens: 1200 });
     expect(output.stopReason).toBe('tool_use');
     expect(output.metrics).toEqual({ latencyMs: 12 });
+  });
+
+  it('reads blocks by their type: an answer that starts with thinking still gives its tool call', () => {
+    const output = toConverseOutput(
+      message([
+        { type: 'thinking', thinking: '', signature: 's' },
+        { type: 'redacted_thinking', data: 'x' },
+        { type: 'tool_use', id: 'toolu_2', name: TOOL_NAME, input: { days: [] } },
+      ]),
+    );
+    expect(output.output?.message?.content).toEqual([
+      { toolUse: { toolUseId: 'toolu_2', name: TOOL_NAME, input: { days: [] } } },
+    ]);
   });
 
   it('maps a refusal and a missing stop reason', () => {
@@ -306,7 +360,8 @@ describe('anthropicFromParameterStore', () => {
     expect(sent.url).toBe('https://api.anthropic.com/v1/messages');
     expect(sent.method?.toUpperCase()).toBe('POST');
     expect(`${sent.headers.get('authorization')} ${sent.headers.get('x-api-key')}`).toContain('test-key-123');
-    expect(sent.body).toMatchObject({ model: 'claude-haiku-4-5', max_tokens: 1500, tool_choice: { type: 'tool' } });
+    expect(sent.body).toMatchObject({ model: 'claude-sonnet-5-5', max_tokens: 5500, output_config: { effort: 'low' } });
+    expect(sent.body).not.toHaveProperty('tool_choice');
     expect(sent.body).not.toHaveProperty('temperature');
   });
 
@@ -350,17 +405,71 @@ describe('aiFromEnv', () => {
     expect(aiFromEnv({}).modelId).toBe(DEFAULT_MODEL_ID);
     expect(aiFromEnv({ AI_PROVIDER: 'bedrock', MODEL_ID: 'anthropic.claude-x' }).modelId).toBe('anthropic.claude-x');
     expect(aiFromEnv({}).converse).toBeTypeOf('function');
+    expect(aiFromEnv({}).prices).toEqual(DEFAULT_PRICES);
   });
 
   it('uses the Anthropic API when configured, with the key parameter named', () => {
     const env = { AI_PROVIDER: 'anthropic', ANTHROPIC_KEY_PARAMETER: KEY_PARAMETER };
-    expect(aiFromEnv(env).modelId).toBe('claude-haiku-4-5');
+    expect(aiFromEnv(env).modelId).toBe('claude-sonnet-5-5');
     expect(aiFromEnv({ ...env, MODEL_ID: 'claude-haiku-5-5' }).modelId).toBe('claude-haiku-5-5');
     expect(aiFromEnv(env).converse).toBeTypeOf('function');
+  });
+
+  it('records the cost at the model’s own prices, unless the prices are set', () => {
+    const env = { AI_PROVIDER: 'anthropic', ANTHROPIC_KEY_PARAMETER: KEY_PARAMETER };
+    const sonnet = { inputPerMillionTokens: 2, outputPerMillionTokens: 10 };
+    const haiku = { inputPerMillionTokens: 1, outputPerMillionTokens: 5 };
+    expect(aiFromEnv(env).prices).toEqual(sonnet);
+    expect(aiFromEnv({ ...env, MODEL_ID: 'claude-haiku-4-5' }).prices).toEqual(haiku);
+    expect(anthropicPrices('claude-haiku-4-5-20251001')).toEqual(haiku);
+    // A model this code has no prices for is counted at the default model's prices until its prices are given.
+    expect(anthropicPrices('claude-opus-5-5')).toEqual(sonnet);
+    const priced = {
+      ...env,
+      MODEL_ID: 'claude-opus-5-5',
+      MODEL_INPUT_PRICE_PER_MTOK: '7',
+      MODEL_OUTPUT_PRICE_PER_MTOK: '35',
+    };
+    expect(aiFromEnv(priced).prices).toEqual({ inputPerMillionTokens: 7, outputPerMillionTokens: 35 });
   });
 
   it('fails fast on a missing key parameter or an unknown provider', () => {
     expect(() => aiFromEnv({ AI_PROVIDER: 'anthropic' })).toThrow(/ANTHROPIC_KEY_PARAMETER is required/);
     expect(() => aiFromEnv({ AI_PROVIDER: 'openai' })).toThrow(/must be bedrock or anthropic, got openai/);
+  });
+});
+
+describe('an answer without the tool call (the tool is offered, not forced)', () => {
+  const problemsOf = async (responses: Anthropic.Message[]) => {
+    const fake = fakeSender(responses);
+    const problems: string[] = [];
+    const result = await chooseStops(input, {
+      ...options(fake.converse),
+      onAttempt: (_attempt, outcome) => problems.push(outcome),
+    }).catch((error: unknown) => error);
+    return { fake, problems, result };
+  };
+
+  it('asks again when the model answers in words, and takes the tool call that follows', async () => {
+    const words = message([{ type: 'text', text: 'Here is a plan.' }], { stop_reason: 'end_turn' });
+    const { fake, problems, result } = await problemsOf([words, toolCall(baseSelection())]);
+    expect(problems).toEqual(['the answer did not call the plan tool']);
+    expect(fake.calls).toHaveLength(2);
+    expect(result).toMatchObject({ selection: baseSelection(), attempts: 2 });
+    // Both answers are paid for: 2 x (1000 input + 200 output tokens) at the prices these tests use.
+    expect((result as { costUSD: number }).costUSD).toBeCloseTo(0.004, 6);
+  });
+
+  it('says so when thinking used up the token limit, and when the model declined', async () => {
+    const cutOff = message([{ type: 'thinking', thinking: '', signature: 's' }], { stop_reason: 'max_tokens' });
+    const declined = message([], { stop_reason: 'refusal' });
+    const { problems, result } = await problemsOf([cutOff, declined, declined]);
+    expect(problems).toEqual([
+      'the answer was cut off at the token limit before the plan tool was called',
+      'the AI declined to answer',
+      'the AI declined to answer',
+    ]);
+    expect(result).toBeInstanceOf(AiError);
+    expect((result as AiError).message).toContain('No usable AI answer after 3 attempts: the AI declined to answer');
   });
 });

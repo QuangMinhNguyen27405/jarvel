@@ -15,8 +15,8 @@ import {
 
 /** Default model on Amazon Bedrock: Claude Haiku 4.5 through the US cross-Region inference profile. */
 export const DEFAULT_MODEL_ID = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
-/** Default model on the Anthropic API: the same Claude Haiku 4.5. */
-export const DEFAULT_ANTHROPIC_MODEL_ID = 'claude-haiku-4-5';
+/** Default model on the Anthropic API: Claude Sonnet 5.5. Keep it the same as the backend's default. */
+export const DEFAULT_ANTHROPIC_MODEL_ID = 'claude-sonnet-5-5';
 
 const DEFAULT_MODEL_IDS: Record<AiProvider, string> = {
   bedrock: DEFAULT_MODEL_ID,

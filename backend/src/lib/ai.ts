@@ -25,10 +25,17 @@ export interface ModelPrices {
   outputPerMillionTokens: number;
 }
 
-/** USD per million tokens for the default model. Override with MODEL_INPUT_PRICE_PER_MTOK / MODEL_OUTPUT_PRICE_PER_MTOK. */
+/**
+ * USD per million tokens for the default Bedrock model (the Anthropic API's are in lib/anthropic.ts). Override
+ * with MODEL_INPUT_PRICE_PER_MTOK / MODEL_OUTPUT_PRICE_PER_MTOK.
+ */
 export const DEFAULT_PRICES: ModelPrices = { inputPerMillionTokens: 1, outputPerMillionTokens: 5 };
 
-export function pricesFromEnv(env: NodeJS.ProcessEnv = process.env): ModelPrices {
+/** The prices from the environment, and `defaults` (the default model's prices) for a price that is not set. */
+export function pricesFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  defaults: ModelPrices = DEFAULT_PRICES,
+): ModelPrices {
   const read = (name: string, fallback: number) => {
     const raw = env[name];
     if (raw === undefined || raw === '') return fallback;
@@ -37,8 +44,8 @@ export function pricesFromEnv(env: NodeJS.ProcessEnv = process.env): ModelPrices
     return value;
   };
   return {
-    inputPerMillionTokens: read('MODEL_INPUT_PRICE_PER_MTOK', DEFAULT_PRICES.inputPerMillionTokens),
-    outputPerMillionTokens: read('MODEL_OUTPUT_PRICE_PER_MTOK', DEFAULT_PRICES.outputPerMillionTokens),
+    inputPerMillionTokens: read('MODEL_INPUT_PRICE_PER_MTOK', defaults.inputPerMillionTokens),
+    outputPerMillionTokens: read('MODEL_OUTPUT_PRICE_PER_MTOK', defaults.outputPerMillionTokens),
   };
 }
 
@@ -205,7 +212,14 @@ export function responseCost(output: ConverseCommandOutput, prices: ModelPrices)
 export function parseAnswer(output: ConverseCommandOutput, input: SelectionInput): AiSelection | string {
   const block = output.output?.message?.content?.find((content) => 'toolUse' in content && content.toolUse);
   const toolUse = block && 'toolUse' in block ? block.toolUse : undefined;
-  if (!toolUse || toolUse.name !== TOOL_NAME) return 'the answer did not call the plan tool';
+  if (!toolUse || toolUse.name !== TOOL_NAME) {
+    // Say why when the model stopped for a known reason: a thinking model can use up the token limit before it
+    // answers, and a model can decline. Both are unusable answers, asked again like any other.
+    if (output.stopReason === 'max_tokens')
+      return 'the answer was cut off at the token limit before the plan tool was called';
+    if (output.stopReason === 'content_filtered') return 'the AI declined to answer';
+    return 'the answer did not call the plan tool';
+  }
   const parsed = answerSchema.safeParse(toolUse.input);
   if (!parsed.success)
     return `the answer did not match the expected structure: ${parsed.error.issues[0]?.message ?? ''}`;

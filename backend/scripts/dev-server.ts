@@ -14,8 +14,13 @@ import { randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import type { ConverseCommandOutput } from '@aws-sdk/client-bedrock-runtime';
 import { createApiHandler, type ApiEvent } from '../src/handlers/api.js';
-import { DEFAULT_PRICES, TOOL_NAME, type ConverseFn } from '../src/lib/ai.js';
-import { anthropicFromApiKey, createAnthropicConverse, DEFAULT_ANTHROPIC_MODEL_ID } from '../src/lib/anthropic.js';
+import { DEFAULT_PRICES, pricesFromEnv, TOOL_NAME, type ConverseFn, type ModelPrices } from '../src/lib/ai.js';
+import {
+  anthropicFromApiKey,
+  anthropicPrices,
+  createAnthropicConverse,
+  DEFAULT_ANTHROPIC_MODEL_ID,
+} from '../src/lib/anthropic.js';
 import { loadBostonData } from '../src/lib/data.js';
 import { IdempotencyStore } from '../src/lib/idempotency.js';
 import { createLogger, createMetrics } from '../src/lib/log.js';
@@ -80,6 +85,7 @@ export function scriptedConverse(thinkMs = 3000): ConverseFn {
 export interface DevAi {
   converse: ConverseFn;
   modelId: string;
+  prices: ModelPrices;
 }
 
 /**
@@ -93,9 +99,11 @@ export function devAiFromEnv(env: NodeJS.ProcessEnv = process.env): DevAi | unde
   if (choice !== 'anthropic') throw new Error(`DEV_AI must be scripted or anthropic, got ${choice}`);
   const apiKey = env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) throw new Error('DEV_AI=anthropic needs your key in the ANTHROPIC_API_KEY environment variable');
+  const modelId = env.MODEL_ID || DEFAULT_ANTHROPIC_MODEL_ID;
   return {
     converse: createAnthropicConverse(anthropicFromApiKey(apiKey)),
-    modelId: env.MODEL_ID || DEFAULT_ANTHROPIC_MODEL_ID,
+    modelId,
+    prices: pricesFromEnv(env, anthropicPrices(modelId)),
   };
 }
 
@@ -210,7 +218,7 @@ export function createDevServer(options: DevServerOptions = {}): DevServer {
     data,
     converse: options.ai?.converse ?? scriptedConverse(options.thinkMs),
     modelId: options.ai?.modelId ?? 'dev-scripted',
-    prices: DEFAULT_PRICES,
+    prices: options.ai?.prices ?? DEFAULT_PRICES,
     now,
     log,
     metrics,

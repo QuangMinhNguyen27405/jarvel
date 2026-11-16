@@ -250,11 +250,12 @@ describe('JarvelStack with the Anthropic API (aiProvider=anthropic)', () => {
       Environment: {
         Variables: Match.objectLike({
           AI_PROVIDER: 'anthropic',
-          MODEL_ID: DEFAULT_ANTHROPIC_MODEL_ID,
+          MODEL_ID: 'claude-sonnet-5-5',
           ANTHROPIC_KEY_PARAMETER: '/jarvel/staging/anthropic-api-key',
         }),
       },
     });
+    expect(DEFAULT_ANTHROPIC_MODEL_ID).toBe('claude-sonnet-5-5');
     expect(anthropicKeyParameterName('prod')).toBe('/jarvel/prod/anthropic-api-key');
     template.resourceCountIs('AWS::SSM::Parameter', 0);
     expect(JSON.stringify(template.toJSON())).not.toMatch(/sk-ant/);

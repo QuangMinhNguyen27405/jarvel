@@ -1,7 +1,18 @@
 // PlannerFn: invoked asynchronously by ApiFn with { userId, planId } (D2). Builds the plan with lib/planner.ts.
 import { z } from 'zod';
-import { createBedrockConverse, DEFAULT_MODEL_ID, pricesFromEnv, type ConverseFn } from '../lib/ai.js';
-import { anthropicFromParameterStore, createAnthropicConverse, DEFAULT_ANTHROPIC_MODEL_ID } from '../lib/anthropic.js';
+import {
+  createBedrockConverse,
+  DEFAULT_MODEL_ID,
+  pricesFromEnv,
+  type ConverseFn,
+  type ModelPrices,
+} from '../lib/ai.js';
+import {
+  anthropicFromParameterStore,
+  anthropicPrices,
+  createAnthropicConverse,
+  DEFAULT_ANTHROPIC_MODEL_ID,
+} from '../lib/anthropic.js';
 import { loadBostonData } from '../lib/data.js';
 import { createDocumentClient, requiredEnv } from '../lib/dynamo.js';
 import { createLogger, createMetrics } from '../lib/log.js';
@@ -12,20 +23,32 @@ import { PlanStore } from '../lib/store.js';
 const eventSchema = z.strictObject({ userId: z.string().min(1).max(200), planId: z.uuid() });
 
 /**
- * The AI client and model for the configured provider. AI_PROVIDER is `bedrock` (the default) or `anthropic`;
- * the Anthropic path also needs ANTHROPIC_KEY_PARAMETER, the name of the SecureString parameter holding the key.
+ * The AI client, model and prices for the configured provider. AI_PROVIDER is `bedrock` (the default) or
+ * `anthropic`; the Anthropic path also needs ANTHROPIC_KEY_PARAMETER, the name of the SecureString parameter
+ * holding the key. The prices are the model's own unless MODEL_INPUT_PRICE_PER_MTOK and
+ * MODEL_OUTPUT_PRICE_PER_MTOK set them.
  */
-export function aiFromEnv(env: NodeJS.ProcessEnv = process.env): { converse: ConverseFn; modelId: string } {
+export function aiFromEnv(env: NodeJS.ProcessEnv = process.env): {
+  converse: ConverseFn;
+  modelId: string;
+  prices: ModelPrices;
+} {
   const provider = env.AI_PROVIDER || 'bedrock';
   if (provider === 'bedrock') {
-    return { converse: createBedrockConverse(env.AWS_REGION), modelId: env.MODEL_ID || DEFAULT_MODEL_ID };
+    return {
+      converse: createBedrockConverse(env.AWS_REGION),
+      modelId: env.MODEL_ID || DEFAULT_MODEL_ID,
+      prices: pricesFromEnv(env),
+    };
   }
   if (provider !== 'anthropic') throw new Error(`AI_PROVIDER must be bedrock or anthropic, got ${provider}`);
   const parameterName = env.ANTHROPIC_KEY_PARAMETER;
   if (!parameterName) throw new Error('ANTHROPIC_KEY_PARAMETER is required when AI_PROVIDER is anthropic');
+  const modelId = env.MODEL_ID || DEFAULT_ANTHROPIC_MODEL_ID;
   return {
     converse: createAnthropicConverse(anthropicFromParameterStore(parameterName)),
-    modelId: env.MODEL_ID || DEFAULT_ANTHROPIC_MODEL_ID,
+    modelId,
+    prices: pricesFromEnv(env, anthropicPrices(modelId)),
   };
 }
 
@@ -39,7 +62,6 @@ export function defaultPlannerDeps(): PlannerDeps {
     quota: new QuotaStore(doc, tableName),
     data: loadBostonData(),
     ...aiFromEnv(),
-    prices: pricesFromEnv(),
     now: () => new Date(),
     log: createLogger({ service: 'planner', stage }),
     metrics: createMetrics(stage),

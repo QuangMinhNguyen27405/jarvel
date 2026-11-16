@@ -543,8 +543,10 @@ describe('the travel design (Nov 16 redesign)', () => {
     expect(within(library).getByText('Free tours at 11:00.')).toBeInTheDocument();
     expect(within(library).getByText('Busy and well lit.')).toBeInTheDocument();
     expect(within(within(day).getByText('Check in at My hotel').closest('li')!).getByText('H')).toBeInTheDocument();
-    // The map numbers the same stop the same way.
-    expect(within(screen.getByRole('region', { name: 'Map of Wed, Nov 18' })).getByText('1. Library')).toBeInTheDocument();
+    // The map numbers the same stop the same way. Its pins arrive a moment after the page: the map library is
+    // loaded when a map is first shown.
+    const map = screen.getByRole('region', { name: 'Map of Wed, Nov 18' });
+    expect(await within(map).findByText('1. Library')).toBeInTheDocument();
     // The key under the day explains the heart, only on a day that has one.
     expect(screen.getByText('From your list', { selector: 'p' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Thu, Nov 19' }));
