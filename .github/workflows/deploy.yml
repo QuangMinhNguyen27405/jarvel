@@ -1,0 +1,53 @@
+# Runs on every merge to main: the checks, then staging, then production after the builder approves.
+#
+# Team rule: this pipeline never passes `--require-approval never`. A change that broadens permissions or network
+# access stops the pipeline before anything is deployed, and the builder deploys it by hand after reading the diff.
+# The first deploy of each stage is such a change, so it is done by hand.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One deploy at a time, in order. A newer merge waits for the running deploy; it never cancels it half-way.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+
+  staging:
+    name: Staging
+    needs: checks
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-stage.yml
+    with:
+      stage: staging
+      environment: staging
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+
+  # The `production` environment has the builder as its required reviewer, so the deploy job inside waits for an
+  # approval. The diff job before it prints what would change, for the builder to read first.
+  production:
+    name: Production
+    needs: staging
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/deploy-stage.yml
+    with:
+      stage: prod
+      environment: production
+    secrets:
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+      ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}

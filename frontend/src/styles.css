@@ -1,0 +1,2435 @@
+/*
+ * Jarvel, "C · Travel": cream paper, an airmail stripe, rubber stamps and ticket shapes. Light only.
+ * Phone first: the base rules are for a phone; wider screens are added at 600px and 900px. Rules that only make
+ * sense on a narrow screen (one pane at a time, the plan's top sheet) sit under max-width: 899.98px.
+ */
+
+:root {
+  color-scheme: light;
+
+  --paper: #f4eee2;
+  --paper-dot: #e2d6c0;
+  --card: #fffcf6;
+  --card-tint: #fbf6ec;
+  --well: #efe6d4;
+  --white: #ffffff;
+  --ink: #1f2933;
+  --ink-2: #3f4a54;
+  --muted: #6e6658;
+  --faint: #a39a89;
+  --rule: #dccfb8;
+  --rule-strong: #b9ac95;
+  --rule-dash: #cdbfa5;
+  --field: #8a7f6e;
+  --teal: #155e67;
+  --teal-dark: #0f4950;
+  --teal-pale: #cfe6e4;
+  --teal-disabled: #9dbdbf;
+  --stamp-red: #b23a24;
+  --error: #8f2a17;
+  --danger-line: #e2b5a9;
+  --mustard: #e3a33a;
+  --green: #2f7d4f;
+  --amber: #9a6200;
+  --airmail-blue: #2f5d8c;
+  --shadow: 0 2px 0 #e6dbc6;
+  --airmail: repeating-linear-gradient(135deg, #b23a24 0 12px, #fffcf6 12px 24px, #2f5d8c 24px 36px, #fffcf6 36px 48px);
+
+  --line-blue: #2a6fdb;
+  --line-orange: #e8820c;
+  --line-green: #1e8a4c;
+  --line-red: #d63a2f;
+  --line-silver: #7c878e;
+  --line-shuttle: #7a8694;
+
+  --font-display: 'Fraunces Variable', Fraunces, Georgia, 'Times New Roman', serif;
+  --font-body:
+    'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --gutter: clamp(16px, 4vw, 32px);
+  --page-top: clamp(12px, 2.2vw, 24px);
+  --radius: 10px;
+  --radius-card: 16px;
+  --focus: 3px solid var(--mustard);
+}
+
+/* ---------------------------------------------------------------- base */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--paper-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: var(--focus);
+  outline-offset: 2px;
+}
+
+summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+summary::-webkit-details-marker {
+  display: none;
+}
+
+.chev {
+  flex: 0 0 auto;
+  transition: transform 0.15s ease;
+}
+
+details[open] > summary .chev {
+  transform: rotate(90deg);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chip--num {
+  font-variant-numeric: tabular-nums;
+}
+
+.airmail {
+  height: 6px;
+  flex: 0 0 auto;
+  background: var(--airmail);
+}
+
+/* ---------------------------------------------------------------- buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.btn:hover {
+  border-color: var(--ink-2);
+  background: var(--white);
+}
+
+.btn-primary {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: var(--card);
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  border-color: var(--teal-dark);
+  background: var(--teal-dark);
+}
+
+.btn-primary:disabled {
+  border-color: var(--teal-disabled);
+  background: var(--teal-disabled);
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+.btn-quiet {
+  font-size: 14px;
+}
+
+/* Destructive actions are outlined, never filled. */
+.btn-danger {
+  border-color: var(--stamp-red);
+  color: var(--stamp-red);
+  font-weight: 600;
+}
+
+.btn-danger-quiet {
+  border-color: var(--danger-line);
+  color: var(--stamp-red);
+}
+
+.btn-danger:hover,
+.btn-danger-quiet:hover {
+  border-color: var(--stamp-red);
+  background: var(--white);
+}
+
+.btn-wide {
+  width: 100%;
+  min-height: 46px;
+}
+
+/* ---------------------------------------------------------------- shell */
+
+.shell {
+  min-height: 100vh;
+}
+
+.topbar {
+  background: var(--card);
+  border-bottom: 1px solid var(--rule);
+}
+
+.topbar-inner {
+  max-width: calc(1200px + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: 8px var(--gutter);
+  display: flex;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.brand {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink);
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-disc {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-word {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-style: italic;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.topbar-user {
+  margin-left: auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topbar-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-user .btn {
+  flex: 0 0 auto;
+}
+
+.page {
+  max-width: calc(1200px + 2 * var(--gutter));
+  margin: 0 auto;
+  padding: var(--page-top) var(--gutter) 32px;
+}
+
+.page--new {
+  max-width: calc(1100px + 2 * var(--gutter));
+}
+
+.page-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.page-title {
+  min-width: 0;
+  font-family: var(--font-display);
+  font-size: clamp(28px, 4vw, 38px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.card-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+/* A plain page on paper: sign-in and start-up. */
+.paper-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.startup {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 16px;
+}
+
+/* ---------------------------------------------------------------- states */
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--ink-2);
+}
+
+.loading-path {
+  flex: 0 0 auto;
+}
+
+.flight-path-arc {
+  stroke: var(--rule-strong);
+  animation: flight 1.6s linear infinite;
+}
+
+.flight-path-body {
+  fill: var(--teal);
+}
+
+@keyframes flight {
+  to {
+    stroke-dashoffset: -32;
+  }
+}
+
+/* Errors are red text after a small icon: no box, no band. */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--error);
+  font-weight: 500;
+}
+
+.alert-icon {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.load-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.load-error .alert {
+  flex: 1 1 180px;
+}
+
+/* ---------------------------------------------------------------- stamps */
+
+.stamp {
+  --tilt: -3deg;
+  display: inline-block;
+  padding: 3px 7px;
+  border: 2px solid currentColor;
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: rotate(var(--tilt));
+}
+
+.stamp--succeeded {
+  --tilt: -6deg;
+  color: var(--green);
+}
+
+.stamp--running {
+  --tilt: -4deg;
+  color: var(--amber);
+}
+
+.stamp--queued {
+  --tilt: 3deg;
+  color: var(--muted);
+}
+
+.stamp--failed {
+  --tilt: 5deg;
+  color: var(--stamp-red);
+}
+
+.stamp--round {
+  --tilt: -8deg;
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  border-width: 3px;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 3px var(--card),
+    inset 0 0 0 4px currentColor;
+  font-size: 13px;
+}
+
+/* ---------------------------------------------------------------- tickets */
+
+.ticket {
+  position: relative;
+  display: flex;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.ticket-stub {
+  position: relative;
+  border-left: 2px dashed var(--rule);
+}
+
+/* The two notches where the stub tears off. */
+.ticket-stub::before,
+.ticket-stub::after {
+  content: '';
+  position: absolute;
+  left: -11px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+
+.ticket-stub::before {
+  top: -10px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.ticket-stub::after {
+  bottom: -10px;
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------------------------------------------------------------- trip list */
+
+.trips {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.trip-list {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(460px, 100%), 1fr));
+  gap: 14px;
+}
+
+.trip-card {
+  height: 100%;
+  transition: border-color 0.15s ease;
+}
+
+.trip-card:hover {
+  border-color: var(--rule-strong);
+}
+
+.trip-card-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.trip-card-title {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.trip-card-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+}
+
+/* The title is the card's one button; its hit area covers the whole ticket. */
+.trip-card-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 14px;
+}
+
+.trip-card-open:focus-visible {
+  outline: none;
+}
+
+.trip-card-open:focus-visible::after {
+  outline: var(--focus);
+  outline-offset: 2px;
+}
+
+.trip-card:hover .trip-card-open {
+  color: var(--teal);
+}
+
+.trip-card-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.route-arrow {
+  flex: 0 0 auto;
+}
+
+.route-arrow-dash {
+  stroke: var(--rule-strong);
+}
+
+.route-arrow-plane {
+  fill: var(--teal);
+}
+
+.trip-card-stub {
+  flex: 0 0 108px;
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.trip-card-stub .stamp {
+  max-width: 92px;
+  white-space: normal;
+}
+
+.trip-card-length {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 20px 40px;
+  padding: clamp(20px, 4vw, 40px);
+}
+
+.empty-art {
+  flex: 0 1 300px;
+  width: 100%;
+  max-width: 300px;
+  height: auto;
+}
+
+.empty-text {
+  flex: 1 1 300px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.empty-title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.empty-text p {
+  max-width: 460px;
+  color: var(--ink-2);
+}
+
+/* ---------------------------------------------------------------- forms */
+
+.field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.field input:not([type='radio']),
+.field textarea,
+.rename-input {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--field);
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.field textarea {
+  padding: 8px 12px;
+  resize: vertical;
+}
+
+.field ::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.field [aria-invalid='true']:not([role='radiogroup']) {
+  padding: 7px 9px;
+  border: 2px solid var(--stamp-red);
+}
+
+.field textarea[aria-invalid='true'] {
+  padding: 7px 11px;
+}
+
+.field input.mono {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* The wishlist looks like ruled paper: one place per line. */
+.field textarea.lined {
+  padding: 4px 12px;
+  background-color: var(--white);
+  background-image: repeating-linear-gradient(var(--white) 0 27px, #e4d8c2 27px 28px);
+  background-position: 0 3px;
+  background-attachment: local;
+  line-height: 28px;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 3px;
+  border-radius: var(--radius);
+  background: var(--well);
+}
+
+.segmented[aria-invalid='true'] {
+  box-shadow: inset 0 0 0 2px var(--stamp-red);
+}
+
+.segmented-option {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.segmented-option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.segmented-option span,
+.segmented-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.segmented-option input:checked + span,
+.segmented-btn[aria-pressed='true'] {
+  background: var(--teal);
+  color: var(--card);
+}
+
+.segmented-option input:focus-visible + span {
+  outline: var(--focus);
+  outline-offset: 2px;
+}
+
+.form-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-legend {
+  padding: 0 0 8px;
+  color: var(--teal);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px 12px;
+}
+
+.form-grid--who {
+  grid-template-columns: minmax(84px, 1fr) minmax(0, 2.4fr);
+}
+
+.form-grid--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.form-errors {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--error);
+  font-size: 14px;
+}
+
+.form-errors li {
+  padding-left: 22px;
+}
+
+.form-errors li:first-child {
+  padding-left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.form-actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.form-actions .btn {
+  min-height: 46px;
+  padding: 0 18px;
+}
+
+.new-trip {
+  --form-pad: clamp(16px, 3vw, 28px);
+  overflow: hidden;
+}
+
+.new-trip-head {
+  padding: 14px var(--form-pad);
+  border-bottom: 2px dashed var(--rule);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.new-trip-head .page-title {
+  flex: 1 1 260px;
+  font-size: clamp(26px, 3vw, 32px);
+  line-height: 1.15;
+}
+
+.new-trip-title-field {
+  flex: 1 1 320px;
+}
+
+.new-trip-main,
+.new-trip-side {
+  min-width: 0;
+  padding: 16px var(--form-pad);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.new-trip-side {
+  gap: 12px;
+  border-top: 2px dashed var(--rule);
+  background: var(--card-tint);
+}
+
+/* The monthly limit: a round "used/limit PLANS" stamp beside the server's message. */
+.quota {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+
+.quota > .alert-icon {
+  color: var(--error);
+}
+
+.quota-stamp {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border: 2px solid var(--amber);
+  border-radius: 50%;
+  color: var(--amber);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  line-height: 1.1;
+  transform: rotate(-8deg);
+}
+
+.quota-count {
+  font-size: 15px;
+}
+
+.quota-unit {
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quota-text {
+  flex: 1 1 200px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- sign-in */
+
+.signin {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 5vw, 56px) 16px;
+}
+
+.postcard {
+  width: 100%;
+  max-width: 980px;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  box-shadow:
+    var(--shadow),
+    0 18px 40px rgba(80, 56, 20, 0.12);
+}
+
+.postcard-art {
+  position: relative;
+  flex: 1 1 380px;
+  min-width: 0;
+  min-height: clamp(220px, 40vw, 520px);
+  background: #f8e3c0;
+}
+
+.postcard-skyline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.postcard-greeting {
+  position: absolute;
+  left: clamp(16px, 3vw, 28px);
+  top: clamp(14px, 3vw, 28px);
+  display: flex;
+  flex-direction: column;
+}
+
+.postcard-from {
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: clamp(17px, 2vw, 22px);
+  font-style: italic;
+  font-weight: 500;
+}
+
+.postcard-city {
+  color: var(--stamp-red);
+  font-family: var(--font-display);
+  font-size: clamp(44px, 7vw, 76px);
+  font-style: italic;
+  font-weight: 800;
+  line-height: 0.95;
+  letter-spacing: 0.02em;
+  text-shadow: 2px 2px 0 var(--card);
+  text-transform: uppercase;
+}
+
+.postcard-body {
+  position: relative;
+  flex: 1 1 380px;
+  min-width: 0;
+  padding: clamp(20px, 3vw, 36px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.signin-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signin-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tag {
+  align-self: flex-start;
+  padding: 1px 8px;
+  border: 1.5px solid var(--muted);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.signin-title {
+  font-family: var(--font-display);
+  font-size: clamp(30px, 3.5vw, 38px);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.signin-tagline {
+  color: var(--ink-2);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-style: italic;
+}
+
+.signin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.signin-form .field input {
+  min-height: 46px;
+  padding: 8px 12px;
+}
+
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.or::before,
+.or::after {
+  content: '';
+  flex: 1 1 0;
+  border-top: 1px dashed var(--rule-dash);
+}
+
+.signin-demo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.signin-demo-note {
+  color: var(--muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.postage {
+  position: relative;
+  flex: 0 0 auto;
+  width: 74px;
+  height: 88px;
+}
+
+.postage-perf {
+  position: absolute;
+  inset: 0;
+  padding: 5px;
+  border: 3px dotted var(--rule-strong);
+  background: var(--card);
+}
+
+.postage-face {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--teal);
+  color: var(--card);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.postage-mark {
+  position: absolute;
+  left: -44px;
+  top: 22px;
+  opacity: 0.75;
+}
+
+/* Cognito sign-in (deployed only): the same paper page, the brand above Amplify's form. Once signed in the
+   Authenticator renders only the app, so the wrapper adds nothing. */
+.cognito-page:has([data-amplify-authenticator])::before {
+  content: '';
+  display: block;
+  height: 6px;
+  background: var(--airmail);
+}
+
+.cognito-brand {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0 16px;
+}
+
+/* Amplify resolves its component colours on :root, so the overrides go there (html:root outranks its :root). */
+html:root {
+  --amplify-colors-primary-10: #e6f0f0;
+  --amplify-colors-primary-20: #cfe6e4;
+  --amplify-colors-primary-40: #8fbcbf;
+  --amplify-colors-primary-60: #3f8088;
+  --amplify-colors-primary-80: #155e67;
+  --amplify-colors-primary-90: #0f4950;
+  --amplify-colors-primary-100: #0b3a40;
+  --amplify-fonts-default-variable: var(--font-body);
+  --amplify-fonts-default-static: var(--font-body);
+  --amplify-radii-small: 6px;
+  --amplify-radii-medium: 10px;
+  --amplify-radii-large: 16px;
+  --amplify-components-button-border-radius: 10px;
+  --amplify-components-fieldcontrol-border-radius: 10px;
+  --amplify-components-authenticator-router-background-color: #fffcf6;
+  --amplify-components-authenticator-router-border-color: #dccfb8;
+  --amplify-components-authenticator-router-box-shadow: 0 2px 0 #e6dbc6;
+}
+
+/* ---------------------------------------------------------------- plan: header */
+
+.plan-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Building and failed plans are short: a narrower column. */
+.plan-detail:not(.plan-detail--ready) {
+  max-width: 880px;
+  margin-inline: auto;
+}
+
+.trip-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+}
+
+.trip-head-main {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.trip-head-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.back-btn,
+.more-btn {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.more-btn {
+  border-color: transparent;
+  background: transparent;
+}
+
+.back-btn:hover {
+  border-color: var(--ink-2);
+}
+
+.trip-head-title {
+  font-family: var(--font-display);
+  font-size: clamp(26px, 3vw, 32px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.trip-head-meta {
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.trip-head-stamp {
+  padding: 1px 7px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+}
+
+.trip-head-stamp.stamp--succeeded,
+.trip-head-stamp.stamp--running {
+  --tilt: -3deg;
+}
+
+.trip-head-stamp.stamp--failed,
+.trip-head-stamp.stamp--queued {
+  --tilt: 3deg;
+}
+
+.trip-head-dates {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.trip-head-dates--long,
+.trip-head-round {
+  display: none;
+}
+
+.trip-head-side {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.trip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.trip-actions .btn {
+  font-size: 14px;
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.confirm-text {
+  font-weight: 600;
+}
+
+.rename {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rename-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 2px solid var(--teal);
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* A ready plan on a phone: a compact header on a cream sheet; Rename and Delete wait behind "More". */
+.trip-head--ticket {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+}
+
+.trip-head--ticket .trip-head-main {
+  flex: 0 0 auto;
+  gap: 2px;
+}
+
+.trip-head--ticket .back-btn {
+  border-color: transparent;
+  background: transparent;
+}
+
+.trip-head--ticket .trip-head-title {
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.trip-head--ticket .trip-head-meta {
+  gap: 2px 10px;
+  font-size: 13px;
+}
+
+.trip-head--ticket .trip-head-stamp {
+  padding: 0 6px;
+  border-width: 1.5px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.trip-head--ticket .trip-actions {
+  padding: 2px 12px 10px 46px;
+}
+
+.trip-head--ticket .trip-actions[data-open='false'] {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- plan: building and failed */
+
+.build,
+.failed {
+  padding: 18px clamp(12px, 3vw, 28px) 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.failed {
+  gap: 14px;
+}
+
+.build-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.build-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.failed-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.failed-text p {
+  max-width: 620px;
+  color: var(--ink-2);
+}
+
+.failed .route-line {
+  margin-top: 6px;
+}
+
+.failed-new {
+  align-self: flex-start;
+}
+
+/* The build steps as stops on a route. --steps is how many there are, --inset is half a step's width (the line
+   starts and ends at the middle of the first and last step) and --reached is how far the solid line runs. */
+.route-line {
+  position: relative;
+}
+
+.route-line::before,
+.route-line::after {
+  content: '';
+  position: absolute;
+  left: var(--inset, 12.5%);
+  top: 15px;
+}
+
+.route-line::before {
+  right: var(--inset, 12.5%);
+  border-top: 3px dashed var(--rule-dash);
+}
+
+.route-line::after {
+  width: var(--reached, 0%);
+  height: 3px;
+  background: var(--teal);
+}
+
+.route-steps {
+  position: relative;
+  z-index: 1;
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--steps, 4), minmax(0, 1fr));
+}
+
+.route-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.route-dot {
+  width: 32px;
+  height: 32px;
+  border: 2px dashed var(--rule-strong);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--teal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.route-step--done .route-dot {
+  border: 0;
+  background: var(--teal);
+  color: var(--card);
+}
+
+.route-step--running .route-dot {
+  border: 3px solid var(--teal);
+  box-shadow: 0 0 0 5px #f8e9c8;
+  animation: working 1.8s ease-in-out infinite;
+}
+
+.route-step--failed .route-dot {
+  border: 3px solid var(--stamp-red);
+  color: var(--stamp-red);
+}
+
+@keyframes working {
+  50% {
+    box-shadow: 0 0 0 8px #f8e9c8;
+  }
+}
+
+.route-label {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.route-step--done .route-label {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.route-step--running .route-label {
+  color: var(--teal);
+  font-weight: 600;
+}
+
+.route-step--failed .route-label {
+  color: var(--stamp-red);
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- plan: days */
+
+.itinerary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.plan-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.day-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 6px;
+}
+
+.day-tab {
+  position: relative;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 6px 0 16px;
+  border: 1px solid var(--rule);
+  border-radius: 5px 12px 12px 5px;
+  background: var(--card);
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 5px;
+  line-height: 42px;
+}
+
+.day-tab:hover {
+  border-color: var(--rule-strong);
+}
+
+/* The punched hole of a luggage tag. */
+.day-tab-hole {
+  position: absolute;
+  left: 6px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--paper);
+  box-shadow: inset 0 0 0 1.5px var(--rule-strong);
+}
+
+.day-tab-wk {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.day-tab-num {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+}
+
+.day-tab[aria-current='true'] {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: var(--card);
+}
+
+.day-tab[aria-current='true'] .day-tab-wk {
+  color: var(--teal-pale);
+}
+
+.day-tab[aria-current='true'] .day-tab-hole {
+  box-shadow: inset 0 0 0 1.5px var(--teal-pale);
+}
+
+.plan-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plan-side {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.day {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.day-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.day-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.day-theme {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.day-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.wish-key {
+  margin: 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.wish-key svg {
+  color: var(--stamp-red);
+}
+
+/* ---------------------------------------------------------------- plan: timeline */
+
+.timeline {
+  --time: 44px;
+  --mark: 28px;
+  --dot: 26px;
+  --col-gap: 10px;
+  padding: 4px 12px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.timeline-list {
+  list-style: none;
+  padding: 0;
+}
+
+.tl-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--time) var(--mark) minmax(0, 1fr);
+  column-gap: var(--col-gap);
+  align-items: start;
+}
+
+/* The route through the day: a teal rail from the first marker to the last. */
+.tl-row::before {
+  content: '';
+  position: absolute;
+  left: calc(var(--time) + var(--col-gap) + var(--mark) / 2 - 2px);
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--teal);
+}
+
+.tl-row:first-child::before {
+  top: 22px;
+  border-radius: 2px 2px 0 0;
+}
+
+.tl-row:last-child::before {
+  bottom: auto;
+  height: 22px;
+  border-radius: 0 0 2px 2px;
+}
+
+.tl-row:only-child::before {
+  display: none;
+}
+
+.tl-time {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-time--minor {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.tl-row--ride {
+  padding: 1px 0;
+}
+
+.tl-row--walk .tl-time,
+.tl-row--walk .tl-marker {
+  height: 34px;
+}
+
+.tl-marker {
+  position: relative;
+  z-index: 1;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tl-dot {
+  width: var(--dot);
+  height: var(--dot);
+  border: 4px solid var(--teal);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--teal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tl-dot--hotel {
+  background: var(--mustard);
+  color: var(--ink);
+}
+
+.tl-dot--airport {
+  background: var(--airmail-blue);
+  color: var(--card);
+}
+
+.tl-dot--plain {
+  width: 14px;
+  height: 14px;
+  border-width: 3px;
+}
+
+.tl-details {
+  min-width: 0;
+}
+
+.tl-summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+}
+
+.tl-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 6px 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.tl-summary:hover .tl-title {
+  color: var(--teal);
+}
+
+.tl-wish {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--stamp-red);
+}
+
+.tl-cost {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.tl-summary > .chev {
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.tl-summary > .tl-cost ~ .chev {
+  margin-left: 0;
+}
+
+.tl-more {
+  padding: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.tl-walk {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+/* A ride: a ticket stub with the line's colour down its left edge. */
+.ride {
+  --line: var(--rule-strong);
+  min-width: 0;
+  border: 1px dashed var(--rule-dash);
+  border-left: 5px solid var(--line);
+  border-radius: 4px 10px 10px 4px;
+  background: var(--card-tint);
+}
+
+.ride[data-line='blue'] {
+  --line: var(--line-blue);
+}
+
+.ride[data-line='orange'] {
+  --line: var(--line-orange);
+}
+
+.ride[data-line='red'] {
+  --line: var(--line-red);
+}
+
+.ride[data-line='green'] {
+  --line: var(--line-green);
+}
+
+.ride[data-line='silver'] {
+  --line: var(--line-silver);
+}
+
+.ride[data-line='shuttle'] {
+  --line: var(--line-shuttle);
+}
+
+.ride-summary {
+  min-height: 44px;
+  padding: 0 8px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 0 9px 9px 0;
+}
+
+.ride-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.ride-mins {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ride .chev {
+  color: var(--teal);
+}
+
+.ride-more {
+  padding: 0 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.ride-steps {
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ride-fare {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------------------- plan: map */
+
+.trip-map {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.trip-map-frame {
+  padding: 6px;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.trip-map-canvas {
+  height: 430px;
+  border-radius: 10px;
+  background: var(--well);
+  font-family: var(--font-body);
+}
+
+.trip-map .maplibregl-ctrl-attrib {
+  background: rgba(255, 252, 246, 0.9);
+  color: var(--ink-2);
+  font-family: var(--font-body);
+  font-size: 11px;
+}
+
+.trip-map .maplibregl-ctrl-attrib a {
+  color: var(--teal);
+}
+
+.trip-map .maplibregl-ctrl-group {
+  overflow: hidden;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.trip-map .maplibregl-ctrl-group button {
+  width: 44px;
+  height: 44px;
+  background-color: var(--card);
+}
+
+.trip-map .maplibregl-popup-content {
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* MapLibre places the pin's outer box itself (with transform), so only the inner drop is turned. */
+.map-pin {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.map-pin-drop {
+  width: 30px;
+  height: 30px;
+  border: 2px solid var(--card);
+  border-radius: 50% 50% 50% 0;
+  background: var(--teal);
+  box-shadow: 0 2px 4px rgba(31, 41, 51, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: rotate(-45deg);
+}
+
+.map-pin-label {
+  color: var(--card);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  transform: rotate(45deg);
+}
+
+.map-pin--hotel .map-pin-drop {
+  background: var(--mustard);
+}
+
+.map-pin--hotel .map-pin-label {
+  color: var(--ink);
+}
+
+.map-key {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.map-key li {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.map-key-dot {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--teal);
+  color: var(--card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.map-key-dot--hotel {
+  background: var(--mustard);
+  color: var(--ink);
+}
+
+.pane-empty {
+  padding: 8px 4px;
+  font-size: 14px;
+}
+
+/* ---------------------------------------------------------------- plan: notes */
+
+.note + .note {
+  border-top: 1px dashed var(--rule);
+}
+
+.note-summary {
+  min-height: 48px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px 10px;
+  border-radius: var(--radius-card);
+}
+
+.note-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.note-summary > .chev {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.note-body {
+  padding: 0 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.note-list {
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.note-list--plain {
+  list-style: none;
+  padding-left: 0;
+}
+
+.note-list strong {
+  font-weight: 600;
+}
+
+.note-fine {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* The sample-data disclaimer, under the notes. */
+.notes-fine {
+  padding: 12px 16px;
+}
+
+.note + .notes-fine {
+  border-top: 1px dashed var(--rule);
+}
+
+.count-tag {
+  padding: 0 8px;
+  border-radius: 3px 9px 9px 3px;
+  background: #eadbc0;
+  color: #5e4214;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------- narrow screens only */
+
+@media (max-width: 899.98px) {
+  /* One pane at a time on a phone. */
+  .itinerary[data-pane='itinerary'] .plan-side,
+  .itinerary[data-pane='map'] .plan-pane--itinerary,
+  .itinerary[data-pane='map'] .plan-pane--notes,
+  .itinerary[data-pane='notes'] .plan-pane--itinerary,
+  .itinerary[data-pane='notes'] .plan-pane--map {
+    display: none;
+  }
+
+  /* A ready plan uses the whole phone screen: its header and tabs form one cream sheet under the stripe. */
+  .shell:has(.plan-detail--ready) .topbar {
+    display: none;
+  }
+
+  .plan-detail--ready {
+    gap: 0;
+  }
+
+  .plan-detail--ready > .trip-head {
+    margin: calc(-1 * var(--page-top)) calc(-1 * var(--gutter)) 0;
+    padding: 6px 4px 2px;
+    background: var(--card);
+  }
+
+  .plan-detail--ready > .alert {
+    margin-top: 12px;
+  }
+
+  .plan-detail--ready .plan-nav {
+    margin: 0 calc(-1 * var(--gutter));
+    padding: 6px var(--gutter) 12px;
+    background: var(--card);
+    border-bottom: 1px solid var(--rule);
+  }
+}
+
+/* ---------------------------------------------------------------- 600px and up */
+
+@media (min-width: 600px) {
+  .day-theme {
+    font-size: 21px;
+  }
+}
+
+/* ---------------------------------------------------------------- 900px and up */
+
+@media (min-width: 900px) {
+  .new-trip-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+  }
+
+  .new-trip-side {
+    border-top: 0;
+    border-left: 2px dashed var(--rule);
+  }
+
+  /* The ready plan's header is a ticket: the round stamp and Rename / Delete sit on its stub. */
+  .trip-head--ticket {
+    flex-direction: row;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow);
+  }
+
+  .trip-head--ticket .trip-head-main {
+    flex: 1 1 auto;
+    padding: 14px clamp(16px, 2.5vw, 24px);
+    gap: 14px;
+  }
+
+  .trip-head--ticket .back-btn {
+    border-color: var(--rule-strong);
+    background: var(--card);
+  }
+
+  .trip-head--ticket .trip-head-title {
+    font-size: 32px;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+  }
+
+  .trip-head--ticket .trip-head-meta {
+    gap: 4px 12px;
+    color: var(--ink-2);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  .trip-head--ticket .trip-head-stamp,
+  .trip-head--ticket .trip-head-dates--short,
+  .more-btn {
+    display: none;
+  }
+
+  .trip-head--ticket .trip-head-dates--long,
+  .trip-head--ticket .trip-head-round {
+    display: inline-flex;
+  }
+
+  .trip-head--ticket .trip-head-side {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 12px 20px;
+    border-left: 2px dashed var(--rule);
+  }
+
+  .trip-head--ticket .trip-head-side::before,
+  .trip-head--ticket .trip-head-side::after {
+    content: '';
+    position: absolute;
+    left: -12px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--paper);
+  }
+
+  .trip-head--ticket .trip-head-side::before {
+    top: -11px;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .trip-head--ticket .trip-head-side::after {
+    bottom: -11px;
+    border-top: 1px solid var(--rule);
+  }
+
+  .trip-head--ticket .trip-actions,
+  .trip-head--ticket .trip-actions[data-open='false'] {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .trip-head--ticket .confirm {
+    max-width: 240px;
+    justify-content: flex-end;
+  }
+
+  .trip-head--ticket .confirm-text {
+    flex: 1 1 100%;
+  }
+
+  /* Timeline beside the map and the notes, all visible. */
+  .pane-switch,
+  .map-key,
+  .pane-empty {
+    display: none;
+  }
+
+  .plan-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.28fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+  }
+
+  .day-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .day-tab {
+    padding: 0 16px 0 28px;
+    border-radius: 6px 16px 16px 6px;
+    gap: 6px;
+    box-shadow: var(--shadow);
+  }
+
+  .day-tab-hole {
+    left: 10px;
+    width: 9px;
+    height: 9px;
+    margin-top: -4.5px;
+    box-shadow: inset 0 0 0 2px var(--rule-strong);
+  }
+
+  .day-tab[aria-current='true'] .day-tab-hole {
+    box-shadow: inset 0 0 0 2px var(--teal-pale);
+  }
+
+  .day-tab-wk {
+    font-size: 13px;
+  }
+
+  .day-tab-num {
+    font-size: 21px;
+  }
+
+  /* The day's card holds its title and its timeline. */
+  .day-card {
+    gap: 0;
+    padding: 14px clamp(16px, 2.5vw, 24px) 6px;
+    background: var(--card);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow);
+  }
+
+  .day-head {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed var(--rule);
+  }
+
+  .day-theme {
+    font-size: 22px;
+  }
+
+  .day-meta {
+    gap: 6px 18px;
+    font-size: 14px;
+  }
+
+  .timeline {
+    --time: 54px;
+    --mark: 32px;
+    --dot: 30px;
+    --col-gap: 12px;
+    padding: 4px 0 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .tl-time {
+    font-size: 15px;
+  }
+
+  .tl-time--minor {
+    font-size: 12px;
+  }
+
+  .tl-dot {
+    font-size: 12px;
+  }
+
+  .tl-title {
+    font-size: 16px;
+  }
+
+  .tl-cost {
+    font-size: 13px;
+  }
+
+  .tl-more,
+  .tl-walk {
+    font-size: 14px;
+  }
+
+  .trip-map-frame {
+    padding: 8px;
+    border-radius: var(--radius-card);
+  }
+
+  .trip-map-canvas {
+    height: 330px;
+  }
+}
+
+/* ---------------------------------------------------------------- motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}

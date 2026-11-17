@@ -1,0 +1,30 @@
+{
+  "name": "jarvel",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "backend",
+    "infra",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "npm run typecheck -w @jarvel/shared -w @jarvel/backend -w @jarvel/infra -w @jarvel/frontend",
+    "test": "npm run test -w @jarvel/backend -w @jarvel/infra -w @jarvel/frontend",
+    "lint": "eslint shared backend infra",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate:data": "npm run validate:data -w @jarvel/backend",
+    "build:frontend": "npm run build -w @jarvel/frontend",
+    "synth": "npm run validate:data && npm run synth -w @jarvel/infra",
+    "deploy": "npm run validate:data && npm run deploy -w @jarvel/infra"
+  },
+  "devDependencies": {
+    "eslint": "^10.13.0",
+    "prettier": "^3.9.10",
+    "typescript-eslint": "^8.72.0"
+  }
+}

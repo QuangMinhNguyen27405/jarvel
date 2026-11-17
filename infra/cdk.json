@@ -1,0 +1,11 @@
+{
+  "app": "npx tsx bin/jarvel.ts",
+  "watch": {
+    "include": ["bin/**", "lib/**", "../backend/src/**"],
+    "exclude": ["test/**", "node_modules/**", "cdk.out/**"]
+  },
+  "context": {
+    "stage": "staging",
+    "aiProvider": "anthropic"
+  }
+}
