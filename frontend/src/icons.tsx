@@ -97,12 +97,6 @@ export const AlertIcon = (props: IconProps) => (
   </Stroke>
 );
 
-export const ShieldIcon = (props: IconProps) => (
-  <Stroke {...props} width={2.2}>
-    <path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z" />
-  </Stroke>
-);
-
 export function HeartIcon({ className, size = 14 }: IconProps) {
   return (
     <svg

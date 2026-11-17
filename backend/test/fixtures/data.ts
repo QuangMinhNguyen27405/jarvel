@@ -1,19 +1,10 @@
 // Fresh, mutable copies of the bundled sample data files, so a test can break one field without touching others.
 import type { DayKey } from '@jarvel/shared';
 import placesFile from '../../src/data/places.json' with { type: 'json' };
-import safetyFile from '../../src/data/safety.json' with { type: 'json' };
 import transitFile from '../../src/data/transit.json' with { type: 'json' };
 import { buildBostonData, type BostonData } from '../../src/lib/data.js';
 
-type Area = MutableRawFiles['safety']['safety']['areas'][number] & { avoidAfter?: string };
 type RawLine = MutableRawFiles['transit']['network']['lines'][number];
-
-/** The named sample area, typed so tests may set avoidAfter or risk levels. */
-export function area(files: MutableRawFiles, id: string): Area {
-  const found = files.safety.safety.areas.find((a) => a.id === id);
-  if (!found) throw new Error(`no sample area ${id}`);
-  return found as Area;
-}
 
 /** The named sample line, with every weekday override removed so first/last train apply all week. */
 export function line(files: MutableRawFiles, id: string): RawLine {
@@ -37,7 +28,6 @@ export function hoursOf(files: MutableRawFiles, id: string): Partial<Record<DayK
 export interface MutableRawFiles {
   places: typeof placesFile;
   transit: typeof transitFile;
-  safety: typeof safetyFile;
 }
 
 /** Checked BostonData built from the sample files after `change` edits a fresh copy. */
@@ -51,6 +41,5 @@ export function rawSampleFiles(): MutableRawFiles {
   return {
     places: structuredClone(placesFile),
     transit: structuredClone(transitFile),
-    safety: structuredClone(safetyFile),
   };
 }

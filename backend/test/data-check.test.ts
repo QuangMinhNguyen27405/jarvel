@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { UNKNOWN_SAFETY_AREA_ID } from '@jarvel/shared';
 import { checkBostonData, formatDataIssues } from '../src/lib/data-check.js';
 import { DEFAULT_DATA_DIR, validateDataDirectory, type ValidateDataIo } from '../scripts/validate-data.js';
 import { rawSampleFiles } from './fixtures/data.js';
@@ -48,29 +47,24 @@ describe('checkBostonData (FR9.1, US6.4)', () => {
     }
   });
 
-  it('fails when a place points to a missing station or safety area (AC6.4.1)', () => {
+  it('fails when a place points to a missing station (AC6.4.1)', () => {
     const files = rawSampleFiles();
     files.places.places[1]!.nearestStationId = 'nowhere';
-    files.places.places[2]!.safetyAreaId = 'no-area';
-    expect(paths(files)).toEqual(['places:places.1.nearestStationId', 'places:places.2.safetyAreaId']);
+    expect(paths(files)).toEqual(['places:places.1.nearestStationId']);
   });
 
-  it('allows the reserved "unknown" safety area for places with no safety information', () => {
-    const files = rawSampleFiles();
-    files.places.places[0]!.safetyAreaId = UNKNOWN_SAFETY_AREA_ID;
-    expect(checkBostonData(files).issues).toEqual([]);
+  it('checks two files, places and transit: there is no safety file in this version', () => {
+    const { issues, data } = checkBostonData(rawSampleFiles());
+    expect(issues).toEqual([]);
+    expect(Object.keys(data ?? {}).sort()).toEqual(['places', 'transit']);
+    expect(JSON.stringify(data)).not.toContain('safetyAreaId');
   });
 
   it('fails on times that are not valid HH:MM (AC6.4.2)', () => {
     const files = rawSampleFiles();
     files.transit.network.lines[0]!.lastTrain = '25:00';
     files.places.places[0]!.hours.mon = [['9am', '17:00']];
-    (files.safety.safety.areas[0] as { avoidAfter?: string }).avoidAfter = '21.00';
-    expect(paths(files)).toEqual([
-      'places:places.0.hours.mon.0.0',
-      'transit:network.lines.0.lastTrain',
-      'safety:safety.areas.0.avoidAfter',
-    ]);
+    expect(paths(files)).toEqual(['places:places.0.hours.mon.0.0', 'transit:network.lines.0.lastTrain']);
   });
 
   it('fails on opening hours that close before they open', () => {
@@ -93,7 +87,7 @@ describe('checkBostonData (FR9.1, US6.4)', () => {
   });
 
   it('reports structural problems such as a missing version', () => {
-    const files = rawSampleFiles() as unknown as { places: unknown; safety: unknown; transit: Record<string, unknown> };
+    const files = rawSampleFiles() as unknown as { places: unknown; transit: Record<string, unknown> };
     delete files.transit.version;
     const { issues, data } = checkBostonData(files);
     expect(data).toBeUndefined();
@@ -135,15 +129,15 @@ describe('validate-data script', () => {
     const io = captureIo({
       'places.json': JSON.stringify(files.places),
       'transit.json': JSON.stringify(files.transit),
-      'safety.json': JSON.stringify(files.safety),
     });
     expect(await validateDataDirectory('/data', io)).toBe(1);
     expect(io.err.join('\n')).toContain('places.0.nearestStationId');
   });
 
   it('exits 1 when a file is missing or is not JSON', async () => {
-    const io = captureIo({ 'places.json': '{ not json', 'transit.json': '{}' });
+    const io = captureIo({ 'places.json': '{ not json' }); // and there is no transit.json
     expect(await validateDataDirectory('/data', io)).toBe(1);
     expect(io.err).toHaveLength(2);
+    expect(io.err.join('\n')).toMatch(/places\.json: could not be read as JSON[\s\S]*transit\.json: could not be read/);
   });
 });

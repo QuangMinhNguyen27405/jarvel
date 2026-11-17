@@ -1,5 +1,5 @@
 // Renders a plan as readable Markdown with the same content as the JSON (FR7.1, US5.2): days, times, stops,
-// transit legs with their steps, safety guidance, the disclaimer, the unscheduled list, data version and credits.
+// transit legs with their steps, the sample-data disclaimer, the unscheduled list, data version and credits.
 // A plan that is not finished renders as its status instead of an empty plan (AC5.2.3).
 import type { DayPlan, ItineraryItem, Money, PlanRecord } from '@jarvel/shared';
 
@@ -27,7 +27,6 @@ function renderItem(item: ItineraryItem): string[] {
   const lines = [`- ${time} **${escapeMarkdown(item.title)}**${item.isWishlist ? ' (wishlist)' : ''}`];
   if (item.description) lines.push(`  - ${escapeMarkdown(item.description)}`);
   if (item.placeId) lines.push(`  - Estimated cost per person: ${money(item.cost)}`);
-  if (item.safety) lines.push(`  - Safety (${item.safety.level}): ${escapeMarkdown(item.safety.note)}`);
   if (item.bookingTip) lines.push(`  - ${escapeMarkdown(item.bookingTip)}`);
   return lines;
 }
@@ -35,12 +34,6 @@ function renderItem(item: ItineraryItem): string[] {
 function renderDay(day: DayPlan, index: number): string[] {
   return [
     `## Day ${index + 1}: ${day.date} (${day.weekday}) - ${escapeMarkdown(day.theme)}`,
-    '',
-    '**Safety guidance**',
-    '',
-    ...day.safetyGuidance.map((line) => `- ${escapeMarkdown(line)}`),
-    '',
-    '**Timeline**',
     '',
     ...day.items.flatMap(renderItem),
     '',
@@ -70,14 +63,14 @@ export function renderPlanMarkdown(plan: PlanRecord): string {
   const lines = [`# ${escapeMarkdown(plan.title)}`, ''];
   const itinerary = plan.itinerary;
   if (plan.status !== 'SUCCEEDED' || !itinerary) return [...lines, ...renderStatus(plan)].join('\n');
-  lines.push(escapeMarkdown(itinerary.summary), '', `> ${escapeMarkdown(itinerary.disclaimer)}`, '');
+  lines.push(escapeMarkdown(itinerary.summary), '');
+  if (itinerary.disclaimer) lines.push(`> ${escapeMarkdown(itinerary.disclaimer)}`, '');
   itinerary.days.forEach((day, index) => lines.push(...renderDay(day, index)));
   lines.push('## Not scheduled', '');
   if (itinerary.unscheduled.length === 0) lines.push('Every wishlist place is in the timeline.');
   for (const entry of itinerary.unscheduled)
     lines.push(`- ${escapeMarkdown(entry.name)}: ${escapeMarkdown(entry.reason)}`);
-  lines.push('', '## Safety', '', ...itinerary.safetyBrief.map((line) => `- ${escapeMarkdown(line)}`), '');
-  lines.push('## Getting around', '', ...itinerary.transitBrief.map((line) => `- ${escapeMarkdown(line)}`), '');
+  lines.push('', '## Getting around', '', ...itinerary.transitBrief.map((line) => `- ${escapeMarkdown(line)}`), '');
   lines.push(
     '## Estimated costs per person',
     '',

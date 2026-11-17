@@ -1,19 +1,16 @@
 // Loads the hand-checked Boston data that ships with each deploy (FR9) and exposes lookups, the data
 // version and the source credits (FR9.2). Bad data fails fast at load time; it is never used.
-import type { Line, Place, SafetyArea, SafetyKnowledge, Station, TransitNetwork } from '@jarvel/shared';
+import type { Line, Place, Station, TransitNetwork } from '@jarvel/shared';
 import placesFile from '../data/places.json' with { type: 'json' };
-import safetyFile from '../data/safety.json' with { type: 'json' };
 import transitFile from '../data/transit.json' with { type: 'json' };
 import { checkBostonData, formatDataIssues, type DataIssue, type RawBostonFiles } from './data-check.js';
 
 export interface BostonData {
   places: Place[];
   network: TransitNetwork;
-  safety: SafetyKnowledge;
   placeById: ReadonlyMap<string, Place>;
   stationById: ReadonlyMap<string, Station>;
   lineById: ReadonlyMap<string, Line>;
-  areaById: ReadonlyMap<string, SafetyArea>;
   dataVersion: string;
   sourceCredits: string[];
   /** True when any file is marked as sample data that has not been hand-checked. */
@@ -27,22 +24,20 @@ export class DataCheckError extends Error {
   }
 }
 
-/** Builds lookups over the three data files after checking them. Throws DataCheckError on any issue. */
+/** Builds lookups over the two data files after checking them. Throws DataCheckError on any issue. */
 export function buildBostonData(raw: RawBostonFiles): BostonData {
   const { issues, data } = checkBostonData(raw);
   if (!data) throw new DataCheckError(issues);
-  const credits = [...data.places.sourceCredits, ...data.transit.sourceCredits, ...data.safety.sourceCredits];
+  const credits = [...data.places.sourceCredits, ...data.transit.sourceCredits];
   return {
     places: data.places.places,
     network: data.transit.network,
-    safety: data.safety.safety,
     placeById: new Map(data.places.places.map((p) => [p.id, p])),
     stationById: new Map(data.transit.network.stations.map((s) => [s.id, s])),
     lineById: new Map(data.transit.network.lines.map((l) => [l.id, l])),
-    areaById: new Map(data.safety.safety.areas.map((a) => [a.id, a])),
-    dataVersion: `places@${data.places.version},transit@${data.transit.version},safety@${data.safety.version}`,
+    dataVersion: `places@${data.places.version},transit@${data.transit.version}`,
     sourceCredits: [...new Set(credits)],
-    isSample: data.places.sample || data.transit.sample || data.safety.sample,
+    isSample: data.places.sample || data.transit.sample,
   };
 }
 
@@ -50,7 +45,7 @@ let bundled: BostonData | undefined;
 
 /** The Boston data bundled with this deploy, checked once and cached. */
 export function loadBostonData(): BostonData {
-  bundled ??= buildBostonData({ places: placesFile, transit: transitFile, safety: safetyFile });
+  bundled ??= buildBostonData({ places: placesFile, transit: transitFile });
   return bundled;
 }
 

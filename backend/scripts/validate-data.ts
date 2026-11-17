@@ -19,11 +19,11 @@ const defaultIo: ValidateDataIo = {
 
 export const DEFAULT_DATA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/data');
 
-const FILES: DataFileName[] = ['places', 'transit', 'safety'];
+const FILES: DataFileName[] = ['places', 'transit'];
 
 /** Checks the data in `dataDir` and returns the process exit code: 0 when valid, 1 otherwise. */
 export async function validateDataDirectory(dataDir: string, io: ValidateDataIo = defaultIo): Promise<number> {
-  const raw: Record<DataFileName, unknown> = { places: undefined, transit: undefined, safety: undefined };
+  const raw: Record<DataFileName, unknown> = { places: undefined, transit: undefined };
   const readErrors: string[] = [];
   for (const name of FILES) {
     const filePath = path.join(dataDir, `${name}.json`);
@@ -43,11 +43,8 @@ export async function validateDataDirectory(dataDir: string, io: ValidateDataIo 
     formatDataIssues(issues).forEach((line) => io.error(`  ${line}`));
     return 1;
   }
-  io.log(
-    `Boston data OK: ${data.places.places.length} places, ${data.transit.network.stations.length} stations, ` +
-      `${data.safety.safety.areas.length} safety areas.`,
-  );
-  if (data.places.sample || data.transit.sample || data.safety.sample) {
+  io.log(`Boston data OK: ${data.places.places.length} places, ${data.transit.network.stations.length} stations.`);
+  if (data.places.sample || data.transit.sample) {
     io.log('WARNING: this is SAMPLE data that has not been hand-checked. Replace it before real use.');
   }
   return 0;

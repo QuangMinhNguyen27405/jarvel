@@ -1427,7 +1427,8 @@ html:root {
   align-self: flex-start;
 }
 
-/* The five build steps as stops on a route. --reached is how far the solid line runs. */
+/* The build steps as stops on a route. --steps is how many there are, --inset is half a step's width (the line
+   starts and ends at the middle of the first and last step) and --reached is how far the solid line runs. */
 .route-line {
   position: relative;
 }
@@ -1436,12 +1437,12 @@ html:root {
 .route-line::after {
   content: '';
   position: absolute;
-  left: 10%;
+  left: var(--inset, 12.5%);
   top: 15px;
 }
 
 .route-line::before {
-  right: 10%;
+  right: var(--inset, 12.5%);
   border-top: 3px dashed var(--rule-dash);
 }
 
@@ -1457,7 +1458,7 @@ html:root {
   list-style: none;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--steps, 4), minmax(0, 1fr));
 }
 
 .route-step {
@@ -1652,29 +1653,6 @@ html:root {
   font-size: 13px;
 }
 
-.safety-pill {
-  position: relative;
-  margin-left: auto;
-  min-height: 30px;
-  padding: 0 10px 0 7px;
-  border: 1px solid #b9d4c2;
-  border-radius: 15px;
-  background: #ddefe2;
-  color: #1f5a37;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-/* A 44px tap area around the small pill. */
-.safety-pill::before {
-  content: '';
-  position: absolute;
-  inset: -7px -4px;
-}
-
 .wish-key {
   margin: 0 4px;
   display: flex;
@@ -1863,18 +1841,6 @@ html:root {
   gap: 4px;
   color: var(--ink-2);
   font-size: 13px;
-}
-
-.tl-safety {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-
-.tl-safety svg {
-  flex: 0 0 auto;
-  margin-top: 2px;
-  color: var(--green);
 }
 
 .tl-walk {
@@ -2122,20 +2088,11 @@ html:root {
   border-radius: var(--radius-card);
 }
 
-.note-icon {
-  color: var(--green);
-}
-
 .note-title {
   font-family: var(--font-display);
   font-size: 18px;
   font-weight: 700;
   line-height: 1.2;
-}
-
-.note-sub {
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .note-summary > .chev {
@@ -2167,18 +2124,18 @@ html:root {
   font-weight: 600;
 }
 
-.note-inner-summary {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--teal);
-  font-weight: 600;
-}
-
 .note-fine {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* The sample-data disclaimer, under the notes. */
+.notes-fine {
+  padding: 12px 16px;
+}
+
+.note + .notes-fine {
+  border-top: 1px dashed var(--rule);
 }
 
 .count-tag {
@@ -2344,7 +2301,6 @@ html:root {
 
   /* Timeline beside the map and the notes, all visible. */
   .pane-switch,
-  .safety-pill,
   .map-key,
   .pane-empty {
     display: none;

@@ -5,9 +5,9 @@ The Boston trip-planning API: an HTTP API on API Gateway with Cognito sign-in, `
 [AI provider](#ai-provider)). The infrastructure is in `../infra` (AWS CDK) and the shared types are in `../shared`
 (`@jarvel/shared`).
 
-> **The Boston data in `src/data/` is a SAMPLE.** It is marked `sample: true`, every place is `verified: false`, and
-> the safety areas are placeholders. It exists so the tests and the first deploy have something to run on. It is
-> **not checked safety or transit information**. Replace it with your own hand-checked data before anyone relies
+> **The Boston data in `src/data/` is a SAMPLE.** It is marked `sample: true` and every place is `verified: false`.
+> It exists so the tests and the first deploy have something to run on. It is **not checked opening-hours or
+> transit information**. Replace it with your own hand-checked data before anyone relies
 > on a plan (see [Replacing the sample Boston data](#replacing-the-sample-boston-data)).
 >
 > Six of its places (`userRequested: true`) were added on 2026-11-12 from a web search, for the demo trip. Their
@@ -49,7 +49,7 @@ npm run dev -w @jarvel/frontend       # web app on http://localhost:5173 (second
   [Trying a real Anthropic key locally](#trying-a-real-anthropic-key-locally)). It picks the wishlist places and
   fills the days from the catalog, after
   `DEV_PLANNER_DELAY_MS` (default 3000) so you can watch a plan go from `QUEUED` to `SUCCEEDED`. The scheduling,
-  transit, safety rules and final check are the real code.
+  transit routing and final check are the real code.
 - **Only this computer can reach it.** It listens on `127.0.0.1`. `HOST` changes that (for example `HOST=0.0.0.0`
   to try it from a phone on your network), but anyone on that network can then use it with any name.
 - Each day of a finished plan shows a map in the web app. Locally it is drawn from OpenStreetMap tiles, loaded from
@@ -172,15 +172,17 @@ curl -s -X POST "$API/plans" \
     "hotel": { "name": "My hotel", "address": "1 Example St, Boston", "lat": 42.3586, "lng": -71.0585 },
     "wishlist": ["Boston Public Library", "New England Aquarium", "Harvard Yard"],
     "notes": "We like quiet places.",
-    "preferences": { "pace": "moderate", "safety": "standard", "maxWalkMinutes": 15 }
+    "preferences": { "pace": "moderate", "maxWalkMinutes": 15 }
   }'
 ```
 
 - `arrival` and `departure` are Boston local times written `YYYY-MM-DDTHH:MM`. The trip is at most 7 days, starts
   in the future and no more than 12 months ahead.
 - `title`, `notes` and `preferences` are optional. Omitted preferences default to `pace: moderate`,
-  `safety: standard`, `budgetLevel: moderate`, `transport: subway-first`, `maxWalkMinutes: 15`,
-  `dayStart: 09:00`, `dayEnd: 21:30`, `includeMichelin: false`.
+  `budgetLevel: moderate`, `transport: subway-first`, `maxWalkMinutes: 15`, `dayStart: 09:00`, `dayEnd: 21:30`,
+  `includeMichelin: false`.
+- There is no `safety` preference. This version has no safety rules (they were removed on 2026-11-16), so a
+  request that sends `preferences.safety` is refused like any unknown field.
 - The hotel must be within a 30-minute walk of a station in the data. Unknown fields are refused.
 - `Idempotency-Key` is optional (1–128 of `A-Z a-z 0-9 . _ : -`). Re-sending the same key and body within 24 hours
   returns the same plan (header `idempotent-replayed: true`) without using another count. The same key with a
@@ -251,8 +253,8 @@ which day and in what order; fixed code sets the times, and the final check refu
   whole of the place's `typicalDwellMinutes`. A place with a lunch and a dinner period is visited in one of them,
   never across the gap.
 - **A stop never starts before opening.** When you would arrive early, the leg to the place leaves later instead,
-  so the spare time is not spent at a closed door. That later leg is used when it is allowed by the transit and
-  safety rules and still starts the visit no more than 15 minutes after opening; otherwise the earlier leg is kept
+  so the spare time is not spent at a closed door. That later leg is used when it is allowed by the transit rules
+  (for example it does not miss the last train) and still starts the visit no more than 15 minutes after opening; otherwise the earlier leg is kept
   and the visit starts at opening.
 - **The AI's order is kept when the wait is short.** A stop that can start within 30 minutes of arriving stays
   where the AI put it. Otherwise the stop of that day that can start earliest goes first, so a dinner-only place
@@ -305,7 +307,7 @@ Exit codes: `0` done, `1` refused or failed, `2` wrong usage.
 
 ## Replacing the sample Boston data
 
-The planner only uses the three files in `src/data/`:
+The planner only uses the two files in `src/data/`:
 
 - `places.json`: the places travelers can put on a wishlist, with opening hours (see
   [Opening hours](#opening-hours)), visit length, cost and the area. A place can list `aliases`: other spellings a
@@ -313,8 +315,6 @@ The planner only uses the three files in `src/data/`:
   or when the alias is at least 5 characters long and appears in the entry as whole words.
 - `transit.json`: subway lines with their service hours and headways, stations, the edges between stations
   (ride minutes) and the airport access.
-- `safety.json`: areas with their bounds and their night risk (`low`, `moderate`, `elevated`) and optional
-  `avoidAfter` time. Points outside every area count as unknown, which is treated as moderate after dark.
 
 To replace them:
 
@@ -340,7 +340,7 @@ when actual spend passes **$20**. The AI is paid to Anthropic, not AWS, and has 
 - Claude Sonnet 5.5 thinks briefly before it answers. That thinking is billed as output tokens and is part of
   `aiCostUSD`. One attempt is capped at 5,500 output tokens, which is $0.055.
 - Each plan makes one AI call, plus at most 2 retries when the answer is unusable or the AI service is busy. The
-  scheduler, transit routing and safety checks are plain code and cost nothing per plan.
+  scheduler, transit routing and final check are plain code and cost nothing per plan.
 - **With the Anthropic API, the AI cost is billed by Anthropic, not AWS.** The AWS Budget does not see it, so it
   is outside the $20 alert. Set a spend limit of $50 a month for the key's workspace in the Anthropic Console.
 - The plan limit keeps the AI cost far below that. Ten people at 3 plans a month are 30 plans. If every one of

@@ -1,7 +1,7 @@
 import type { DayPlan, Itinerary as ItineraryData, ItineraryItem, PlanRecord } from '@jarvel/shared';
 import { useMemo, useState } from 'react';
 import { dayParts, money, transitSummary } from './format.js';
-import { ChevronIcon, HeartIcon, PlaneIcon, ShieldIcon, WalkIcon } from './icons.js';
+import { ChevronIcon, HeartIcon, PlaneIcon, WalkIcon } from './icons.js';
 import { dayMap } from './map.js';
 import { TripMap } from './TripMap.js';
 
@@ -56,7 +56,6 @@ function StopRow({ item, number }: { item: ItineraryItem; number: string | undef
   const description = text(item.description);
   const lead = [end ? `Until ${end}.` : '', description].filter(Boolean).join(' ');
   const tip = text(item.bookingTip);
-  const safety = text(item.safety?.note);
   const summary = (
     <>
       <span className="tl-title">{item.title}</span>
@@ -75,7 +74,7 @@ function StopRow({ item, number }: { item: ItineraryItem; number: string | undef
       <span className="tl-marker" aria-hidden="true">
         <Marker item={item} number={number} />
       </span>
-      {lead || tip || safety ? (
+      {lead || tip ? (
         <details className="tl-details">
           <summary className="tl-summary">
             {summary}
@@ -84,12 +83,6 @@ function StopRow({ item, number }: { item: ItineraryItem; number: string | undef
           <div className="tl-more">
             {lead && <p>{lead}</p>}
             {tip && <p>{tip}</p>}
-            {safety && (
-              <p className="tl-safety">
-                <ShieldIcon size={14} />
-                <span>{safety}</span>
-              </p>
-            )}
           </div>
         </details>
       ) : (
@@ -176,63 +169,18 @@ function Timeline({ day }: { day: DayPlan }) {
   );
 }
 
-function Notes({
-  itinerary,
-  day,
-  safetyOpen,
-  onSafetyToggle,
-}: {
-  itinerary: ItineraryData;
-  day: DayPlan | undefined;
-  safetyOpen: boolean;
-  onSafetyToggle: (open: boolean) => void;
-}) {
-  const guidance = strings(day?.safetyGuidance);
-  const tripTips = strings(itinerary.safetyBrief);
+/** What the plan left out, how to get around, and the sample-data disclaimer when the plan has one. */
+function Notes({ itinerary }: { itinerary: ItineraryData }) {
   const disclaimer = text(itinerary.disclaimer);
   const unscheduled = (Array.isArray(itinerary.unscheduled) ? itinerary.unscheduled : []).filter(
     (entry) => typeof entry === 'object' && entry !== null,
   );
   const transitBrief = strings(itinerary.transitBrief);
   const passAdvice = text(itinerary.costs?.transitPassAdvice);
-  const hasSafety = guidance.length > 0 || tripTips.length > 0 || disclaimer !== '';
   const hasGettingAround = transitBrief.length > 0 || passAdvice !== '';
-  if (!hasSafety && unscheduled.length === 0 && !hasGettingAround) return null;
+  if (!disclaimer && unscheduled.length === 0 && !hasGettingAround) return null;
   return (
     <div className="card notes">
-      {hasSafety && (
-        <details className="note" open={safetyOpen} onToggle={(event) => onSafetyToggle(event.currentTarget.open)}>
-          <summary className="note-summary">
-            <ShieldIcon className="note-icon" size={18} />
-            <h3 className="note-title">Safety</h3>
-            {day && <span className="note-sub">{dayParts(day.date).label}</span>}
-            <ChevronIcon className="chev" size={16} />
-          </summary>
-          <div className="note-body">
-            {guidance.length > 0 && (
-              <ul className="note-list">
-                {guidance.map((line, index) => (
-                  <li key={`${index}:${line}`}>{line}</li>
-                ))}
-              </ul>
-            )}
-            {tripTips.length > 0 && (
-              <details className="note-inner">
-                <summary className="note-inner-summary">
-                  Whole-trip tips
-                  <ChevronIcon className="chev" size={14} />
-                </summary>
-                <ul className="note-list">
-                  {tripTips.map((line, index) => (
-                    <li key={`${index}:${line}`}>{line}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {disclaimer && <p className="note-fine">{disclaimer}</p>}
-          </div>
-        </details>
-      )}
       {unscheduled.length > 0 && (
         <details className="note" data-testid="unscheduled">
           <summary className="note-summary">
@@ -269,6 +217,7 @@ function Notes({
           </div>
         </details>
       )}
+      {disclaimer && <p className="note-fine notes-fine">{disclaimer}</p>}
     </div>
   );
 }
@@ -284,23 +233,14 @@ export function Itinerary({ plan }: { plan: PlanRecord }) {
   );
   const [dayIndex, setDayIndex] = useState(0);
   const [pane, setPane] = useState<Pane>('itinerary');
-  const [safetyOpen, setSafetyOpen] = useState(false);
   const selected = days[Math.min(dayIndex, days.length - 1)];
   // Kept stable between renders, so the map is not handed a "new" day when only the pane changes.
   const day = useMemo(() => (selected ? usableDay(selected) : undefined), [selected]);
   const parts = day ? dayParts(day.date) : undefined;
   const walking = finite(day?.walkingMinutes) && day.walkingMinutes >= 0 ? `${day.walkingMinutes} min` : '';
   const cost = money(day?.cost);
-  const hasSafety =
-    strings(day?.safetyGuidance).length > 0 ||
-    strings(itinerary.safetyBrief).length > 0 ||
-    text(itinerary.disclaimer) !== '';
   const fromList = day?.items.some((item) => item.isWishlist === true) ?? false;
   const mapped = day ? dayMap(day).stops.length > 0 : false;
-  const openSafety = () => {
-    setPane('notes');
-    setSafetyOpen(true);
-  };
   return (
     <div className="itinerary" data-pane={pane}>
       <div className="plan-nav">
@@ -348,7 +288,7 @@ export function Itinerary({ plan }: { plan: PlanRecord }) {
                 <h2 id="day-title" className="day-theme">
                   {text(day.theme) || parts?.label}
                 </h2>
-                {(walking || cost || hasSafety) && (
+                {(walking || cost) && (
                   <div className="day-meta">
                     {walking && (
                       <span className="chip" role="img" aria-label={`${walking} walking`}>
@@ -360,12 +300,6 @@ export function Itinerary({ plan }: { plan: PlanRecord }) {
                       <span className="chip chip--num" role="img" aria-label={`${cost} per person`}>
                         {cost}
                       </span>
-                    )}
-                    {hasSafety && (
-                      <button type="button" className="safety-pill" onClick={openSafety}>
-                        <ShieldIcon size={14} />
-                        Safety
-                      </button>
                     )}
                   </div>
                 )}
@@ -387,7 +321,7 @@ export function Itinerary({ plan }: { plan: PlanRecord }) {
             </div>
           )}
           <div className="plan-pane plan-pane--notes">
-            <Notes itinerary={itinerary} day={day} safetyOpen={safetyOpen} onSafetyToggle={setSafetyOpen} />
+            <Notes itinerary={itinerary} />
           </div>
         </div>
       </div>

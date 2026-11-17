@@ -193,12 +193,11 @@ export function transitSummary(leg: Partial<TransitLeg>): TransitSummary {
 // Build progress
 // ---------------------------------------------------------------------------
 
-/** The five build steps, in the order the planner runs them. */
+/** The build steps, in the order the planner runs them. */
 export const BUILD_STEPS: readonly { agent: AgentName; label: string }[] = [
   { agent: 'researcher', label: 'Stops' },
   { agent: 'scheduler', label: 'Timing' },
   { agent: 'transit', label: 'Transit' },
-  { agent: 'safety', label: 'Safety check' },
   { agent: 'critic', label: 'Final check' },
 ];
 
@@ -226,7 +225,7 @@ export interface BuildProgress {
   reached: number;
 }
 
-/** The five build steps with their status from a plan's progress (a step with no entry is waiting). */
+/** The build steps with their status from a plan's progress (a step with no entry is waiting). */
 export function buildProgress(progress: readonly Partial<AgentProgress>[] | undefined | null): BuildProgress {
   const entries = Array.isArray(progress) ? progress : [];
   const steps = BUILD_STEPS.map(({ agent, label }): BuildStep => {

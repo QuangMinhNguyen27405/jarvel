@@ -104,6 +104,13 @@ describe('validateTripRequest: refused requests (AC2.2.2)', () => {
     expect(result.fields[0]?.message).toMatch(/outside the area the planner covers/);
   });
 
+  it('refuses a safety preference: the safety rules are not part of this version', () => {
+    expect(fieldsOf(validRequestBody({ preferences: { pace: 'moderate', safety: 'strict' } }))).toEqual([
+      'preferences.safety',
+    ]);
+    expect(DEFAULT_PREFERENCES).not.toHaveProperty('safety');
+  });
+
   it('refuses unknown fields, missing fields and over-long text', () => {
     const body = validRequestBody({ unexpected: true, wishlist: ['x'.repeat(101)], notes: 'n'.repeat(1001) });
     delete body.travelers;

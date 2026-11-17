@@ -1,7 +1,7 @@
 // Turns the AI's ordered stops into timed days (FR3, FR3.2, FR3.3) with transit legs between every change of
-// location (FR5). Any stop that would break a safety or last-train rule is moved to another position or day, or
-// listed as unscheduled with a fixed reason (FR4.3, FR5.3). Wishlist entries not in the Boston data are listed as
-// unscheduled (FR3.1, FR3.5). Each day carries its safety guidance and the plan carries the disclaimer (FR4.4).
+// location (FR5). Any stop that would miss the last train is moved to another position or day, or listed as
+// unscheduled with a fixed reason (FR5.3). Wishlist entries not in the Boston data are listed as unscheduled
+// (FR3.1, FR3.5). The safety rules (FR4) are not part of this version: nothing here looks at areas or at sunset.
 // Every stop is inside its place's opening hours on that date (FR12, US7.3): a visit starts when the place is open,
 // and within a day the AI's order is kept unless it would leave the traveler waiting for a place to open.
 import type {
@@ -29,13 +29,10 @@ import {
   type RouteFailure,
   type RouteResult,
 } from './router.js';
-import { areaAtPoint, checkAreaAtTime, checkLegSafety, type SafetyContext } from './safety.js';
-import { sunsetMinutes } from './sun.js';
 import { formatHHMM, listDates, parseHHMM, splitLocalDateTime, weekdayOf } from './time.js';
 
 export const UNSCHEDULED_REASONS = {
   notInData: 'not in the Boston data',
-  unsafe: 'unsafe at the only possible time',
   lastTrain: 'would miss the last train',
   noFit: 'does not fit in your days',
   noRoute: 'no public transport route within your walking limit',
@@ -44,10 +41,6 @@ export const UNSCHEDULED_REASONS = {
 } as const;
 
 export type UnscheduledReason = (typeof UNSCHEDULED_REASONS)[keyof typeof UNSCHEDULED_REASONS];
-
-export const DISCLAIMER =
-  'Safety information in this plan is guidance, not a guarantee. It comes from a curated dataset and cannot ' +
-  'predict events. Use your own judgement, watch your surroundings and follow local advice.';
 
 export const SAMPLE_DATA_WARNING =
   'This plan was built from SAMPLE data that has not been hand-checked. Do not rely on it for real travel.';
@@ -63,10 +56,10 @@ export const MAX_WAIT_FOR_OPENING_MINUTES = 30;
 /** Leaving later for a place that is not open yet is accepted when it starts the visit at most this late. */
 export const LATE_START_TOLERANCE_MINUTES = 15;
 
-export class NoSafePlanError extends Error {
+export class NoPlanError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'NoSafePlanError';
+    this.name = 'NoPlanError';
   }
 }
 
@@ -111,13 +104,12 @@ export function tripContext(request: TripRequest, data: BostonData): TripContext
   const hotelPoint = { lat: request.hotel.lat, lng: request.hotel.lng };
   const arrival = splitLocalDateTime(request.arrival);
   const departure = splitLocalDateTime(request.departure);
-  const airport = data.network.airport;
   return {
     request,
     data,
     index: indexNetwork(data.network),
-    hotel: pointLocation('hotel', request.hotel.name, hotelPoint, data.network, maxWalk, areaAtPoint(hotelPoint, data)),
-    airport: airport ? airportLocation(data.network, areaAtPoint(airport, data)) : undefined,
+    hotel: pointLocation('hotel', request.hotel.name, hotelPoint, data.network, maxWalk),
+    airport: airportLocation(data.network),
     dates: listDates(arrival.date, departure.date),
     arrival,
     departure,
@@ -126,10 +118,6 @@ export function tripContext(request: TripRequest, data: BostonData): TripContext
     maxWalk,
     routes: new Map(),
   };
-}
-
-export function safetyContextFor(trip: TripContext, date: string): SafetyContext {
-  return { areaById: trip.data.areaById, sunset: sunsetMinutes(date), strictness: trip.request.preferences.safety };
 }
 
 /** A timed entry before ids are assigned. */
@@ -153,25 +141,9 @@ function failureReason(reason: RouteFailure): UnscheduledReason {
   return reason === 'outside-service-hours' ? UNSCHEDULED_REASONS.lastTrain : UNSCHEDULED_REASONS.noRoute;
 }
 
-function transitSlot(
-  trip: TripContext,
-  date: string,
-  leg: TransitLeg,
-  start: number,
-  chain: Slot['chain'],
-  from: Location,
-  to: Location,
-): Step<Slot> {
+function transitSlot(leg: TransitLeg, start: number, chain: Slot['chain']): Step<Slot> {
   const end = start + leg.durationMinutes;
   if (end >= 24 * 60) return { ok: false, reason: UNSCHEDULED_REASONS.noFit };
-  const verdict = checkLegSafety(
-    leg,
-    start,
-    { fromAreaId: from.areaId, toAreaId: to.areaId },
-    trip.data,
-    safetyContextFor(trip, date),
-  );
-  if (!verdict.allowed) return { ok: false, reason: UNSCHEDULED_REASONS.unsafe };
   return {
     ok: true,
     value: {
@@ -185,7 +157,6 @@ function transitSlot(
         description: leg.steps.map((step) => step.instruction.replace(/\.+$/, '')).join('. '),
         transit: leg,
         cost: { low: leg.fareUSD, high: leg.fareUSD },
-        safety: { level: verdict.level, note: verdict.note },
       },
     },
   };
@@ -210,7 +181,7 @@ function travel(trip: TripContext, date: string, state: DayState, to: Location, 
   if (state.location.key === to.key) return { ok: true, value: { ...state, location: to } };
   const route = routeBetween(trip, date, state.location, to, state.cursor);
   if (!route.ok) return { ok: false, reason: failureReason(route.reason) };
-  const slot = transitSlot(trip, date, route.leg, state.cursor, chain, state.location, to);
+  const slot = transitSlot(route.leg, state.cursor, chain);
   if (!slot.ok) return slot;
   return { ok: true, value: { cursor: route.arriveAt, location: to, slots: [...state.slots, slot.value] } };
 }
@@ -284,8 +255,6 @@ function visit(
   }
   const end = start + place.typicalDwellMinutes;
   if (end >= 24 * 60) return { ok: false, reason: UNSCHEDULED_REASONS.noFit };
-  const verdict = checkAreaAtTime(place.safetyAreaId, start, end, safetyContextFor(trip, date));
-  if (!verdict.allowed) return { ok: false, reason: UNSCHEDULED_REASONS.unsafe };
   const slot: Slot = {
     chain: 'stop',
     item: {
@@ -296,7 +265,6 @@ function visit(
       placeId: place.id,
       description: place.description,
       cost: place.estCostPerPerson,
-      safety: { level: verdict.level, note: verdict.note },
       ...(place.reservation !== 'none' ? { bookingTip: `Reservation ${place.reservation}.` } : {}),
       isWishlist: wishlistIds.has(place.id),
       location: { lat: place.lat, lng: place.lng },
@@ -326,7 +294,7 @@ function openDay(trip: TripContext, date: string): DayState {
   const atAirport: DayState = { cursor: land + ARRIVAL_MINUTES, location: trip.airport, slots: [arrive] };
   const toHotel = travel(trip, date, atAirport, trip.hotel, 'arrival');
   if (!toHotel.ok)
-    throw new NoSafePlanError(
+    throw new NoPlanError(
       `There is no public transport route from the airport to your hotel after you land (${toHotel.reason}).`,
     );
   const checkIn = fixedSlot(
@@ -481,7 +449,7 @@ function scheduleDay(trip: TripContext, date: string, order: string[], wishlistI
     const closed = closeDay(trip, date, state);
     if (closed.ok) return { slots: closed.value, accepted, rejected };
   }
-  throw new NoSafePlanError(`Day ${date} cannot end at your hotel or the airport in time by public transport.`);
+  throw new NoPlanError(`Day ${date} cannot end at your hotel or the airport in time by public transport.`);
 }
 
 /** Tries to place `placeId` into some day at some position without losing any stop already accepted there. */
@@ -527,31 +495,6 @@ function walkingMinutes(items: ItineraryItem[]): number {
   );
 }
 
-function dayGuidance(trip: TripContext, date: string, items: ItineraryItem[]): string[] {
-  const context = safetyContextFor(trip, date);
-  const strict = trip.request.preferences.safety === 'strict';
-  const guidance = [
-    `Sunset is at ${formatHHMM(context.sunset)}. After dark this plan keeps you out of areas with high night risk` +
-      (strict ? ' and, because you chose strict safety, areas with moderate night risk.' : '.'),
-  ];
-  const areaIds = new Set<string>();
-  let unknown = false;
-  for (const item of items) {
-    if (!item.placeId) continue;
-    const place = trip.data.placeById.get(item.placeId);
-    const area = place ? trip.data.areaById.get(place.safetyAreaId) : undefined;
-    if (area) areaIds.add(area.id);
-    else unknown = true;
-  }
-  for (const id of areaIds) {
-    const area = trip.data.areaById.get(id);
-    if (area) guidance.push(`${area.name}: ${area.notes}`);
-  }
-  if (unknown) guidance.push('Places without safety information are visited in daylight only.');
-  if (trip.data.isSample) guidance.push(SAMPLE_DATA_WARNING);
-  return guidance;
-}
-
 function dayTheme(trip: TripContext, date: string, items: ItineraryItem[]): string {
   const neighborhoods = [
     ...new Set(
@@ -578,7 +521,6 @@ function buildDay(trip: TripContext, date: string, slots: Slot[]): DayPlan {
     cost: roundMoney(sumMoney(items.map((item) => item.cost))),
     walkingMinutes: walkingMinutes(items),
     paceNote: `${trip.request.preferences.pace} pace: ${stops} stop${stops === 1 ? '' : 's'} with transit time between them.`,
-    safetyGuidance: dayGuidance(trip, date, items),
   };
 }
 
@@ -628,7 +570,7 @@ export interface ScheduleInput {
   generatedAt: string;
 }
 
-/** Builds the full itinerary. Throws NoSafePlanError when a day cannot be made safe at all. */
+/** Builds the full itinerary. Throws NoPlanError when a day cannot start or end by public transport in time. */
 export function buildItinerary(input: ScheduleInput): Itinerary {
   const trip = tripContext(input.request, input.data);
   const wishlist = resolveWishlist(input.request, input.data);
@@ -679,11 +621,10 @@ export function buildItinerary(input: ScheduleInput): Itinerary {
         : '.'),
     days,
     costs: costBreakdown(trip, days),
-    safetyBrief: [...input.data.safety.generalTips, ...(input.data.isSample ? [SAMPLE_DATA_WARNING] : [])],
     transitBrief: transitBrief(trip, days),
     unscheduled,
     criticIssues: [],
-    disclaimer: input.data.isSample ? `${DISCLAIMER} ${SAMPLE_DATA_WARNING}` : DISCLAIMER,
+    ...(input.data.isSample ? { disclaimer: SAMPLE_DATA_WARNING } : {}),
     generatedAt: input.generatedAt,
     modelId: input.modelId,
   };

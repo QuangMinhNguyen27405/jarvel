@@ -5,12 +5,11 @@ import { rawSampleFiles } from './fixtures/data.js';
 describe('loadBostonData (FR9, FR9.2)', () => {
   it('exposes the data version, source credits and lookups', () => {
     const data = loadBostonData();
-    expect(data.dataVersion).toBe('places@sample-2026-11-12,transit@sample-2026-10-23,safety@sample-2026-11-12');
+    expect(data.dataVersion).toBe('places@sample-2026-11-12,transit@sample-2026-10-23');
     expect(data.sourceCredits.length).toBeGreaterThan(0);
     expect(data.placeById.get('boston-public-library')?.nearestStationId).toBe('copley');
     expect(data.stationById.get('state')?.lines).toEqual(['blue', 'orange']);
     expect(data.lineById.get('blue')?.lastTrain).toBe('00:30');
-    expect(data.areaById.get('chinatown')?.nightRisk).toBe('moderate');
   });
 
   it('marks the bundled dataset as sample data with every place unverified (D10)', () => {

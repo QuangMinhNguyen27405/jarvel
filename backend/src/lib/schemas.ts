@@ -32,7 +32,6 @@ export const REQUEST_LIMITS = {
 /** Documented defaults for every omitted preference (AC2.1.3). */
 export const DEFAULT_PREFERENCES: TripPreferences = {
   pace: 'moderate',
-  safety: 'standard',
   budgetLevel: 'moderate',
   transport: 'subway-first',
   maxWalkMinutes: 15,
@@ -64,7 +63,6 @@ const hotelSchema = z.strictObject({
 
 const preferencesSchema = z.strictObject({
   pace: z.enum(['relaxed', 'moderate', 'packed']).optional(),
-  safety: z.enum(['standard', 'strict']).optional(),
   budgetLevel: z.enum(['budget', 'moderate', 'splurge']).optional(),
   transport: z.enum(['subway-first', 'mixed']).optional(),
   maxWalkMinutes: z

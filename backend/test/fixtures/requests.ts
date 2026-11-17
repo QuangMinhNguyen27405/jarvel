@@ -24,7 +24,6 @@ export function validRequestBody(overrides: Record<string, unknown> = {}): Recor
     notes: 'We like quiet places.',
     preferences: {
       pace: 'moderate',
-      safety: 'standard',
       budgetLevel: 'moderate',
       transport: 'subway-first',
       maxWalkMinutes: 15,

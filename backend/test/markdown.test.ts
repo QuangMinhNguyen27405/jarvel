@@ -2,7 +2,7 @@ import type { PlanRecord } from '@jarvel/shared';
 import { describe, expect, it } from 'vitest';
 import { loadBostonData } from '../src/lib/data.js';
 import { escapeMarkdown, renderPlanMarkdown } from '../src/lib/markdown.js';
-import { buildItinerary, DISCLAIMER } from '../src/lib/scheduler.js';
+import { buildItinerary, SAMPLE_DATA_WARNING } from '../src/lib/scheduler.js';
 import { hoursOf, sampleDataWith } from './fixtures/data.js';
 import { baseSelection } from './fixtures/fake-ai.js';
 import { queuedPlan } from './fixtures/plans.js';
@@ -47,11 +47,15 @@ describe('renderPlanMarkdown (FR7.1)', () => {
     }
   });
 
-  it('includes the safety guidance, the disclaimer, the unscheduled list, data version and credits (AC5.2.2, AC5.1.3)', () => {
+  it('includes the sample-data disclaimer, the unscheduled list, data version and credits (AC5.2.2, AC5.1.3)', () => {
     const plan = succeededPlan();
     const markdown = renderPlanMarkdown(plan);
-    for (const line of plan.itinerary!.days[0]!.safetyGuidance) expect(markdown).toContain(escapeMarkdown(line));
-    expect(markdown).toContain(escapeMarkdown(DISCLAIMER));
+    expect(markdown).toContain(`> ${escapeMarkdown(SAMPLE_DATA_WARNING)}`);
+    // The safety rules are not part of this version, so the plan says nothing about safety.
+    expect(markdown).not.toMatch(/safety/i);
+    // A plan built from hand-checked data has no disclaimer, and no empty quote in its place.
+    const checked = { ...plan, itinerary: { ...plan.itinerary!, disclaimer: undefined } };
+    expect(renderPlanMarkdown(checked)).not.toContain('\n> ');
     expect(markdown).toContain('Tatte Bakery: not in the Boston data');
     expect(markdown).toContain(data.dataVersion);
     expect(markdown).toContain(escapeMarkdown(data.sourceCredits[0]!));

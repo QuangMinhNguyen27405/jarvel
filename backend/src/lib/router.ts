@@ -19,8 +19,6 @@ export interface Location {
   label: string;
   point: Point;
   access: AccessLink[];
-  /** Safety area of the location itself; undefined means no safety information. */
-  areaId?: string;
 }
 
 export type RouteFailure = 'outside-service-hours' | 'no-route';
@@ -108,7 +106,6 @@ export function placeLocation(place: Place, network: TransitNetwork, maxWalkMinu
     label: place.name,
     point: { lat: place.lat, lng: place.lng },
     access: [declared, ...nearby],
-    areaId: place.safetyAreaId,
   };
 }
 
@@ -118,17 +115,16 @@ export function pointLocation(
   point: Point,
   network: TransitNetwork,
   maxWalk: number,
-  areaId?: string,
 ): Location {
   const access = stationsWithinWalk(point, network.stations, maxWalk)
     .slice(0, 3)
     .map<AccessLink>((candidate) => ({ stationId: candidate.stationId, minutes: candidate.walkMinutes, kind: 'walk' }));
-  return { key, label, point, access, areaId };
+  return { key, label, point, access };
 }
 
 export const AIRPORT_KEY = 'airport';
 
-export function airportLocation(network: TransitNetwork, areaId?: string): Location | undefined {
+export function airportLocation(network: TransitNetwork): Location | undefined {
   const airport = network.airport;
   if (!airport) return undefined;
   return {
@@ -143,7 +139,6 @@ export function airportLocation(network: TransitNetwork, areaId?: string): Locat
         instruction: airport.instruction,
       },
     ],
-    areaId,
   };
 }
 

@@ -2,7 +2,11 @@
 
 Jarvel plans a trip to Boston. You give it your arrival and departure, your hotel and a wishlist of places, and it
 answers with a day-by-day plan: which places on which day, at what time, and how to get between them by subway. Every
-stop is inside the place's opening hours, and the plan follows fixed safety rules for where you are after dark.
+stop is inside the place's opening hours, and no ride is planned after a line's last train.
+
+**This version has no safety rules.** A plan can put a stop, a walk or a station wait anywhere at any hour, after
+dark included, and it says nothing about how safe an area is. The safety rules that an earlier version had were
+removed on 2026-11-16 and are not built for now.
 
 It has two parts:
 
@@ -10,9 +14,9 @@ It has two parts:
   plan, to the Anthropic API or to Amazon Bedrock (`backend/README.md`, "AI provider").
 - **A web app** (React) that signs you in, takes the trip details and shows each day of the plan on a map.
 
-> **The Boston data is a SAMPLE.** The places, opening hours, subway data and safety areas in `backend/src/data/` are
-> not hand-checked. A plan that keeps to those hours can still arrive at a closed door, and the safety areas are
-> placeholders. Do not rely on a plan until the data has been replaced with checked information
+> **The Boston data is a SAMPLE.** The places, opening hours and subway data in `backend/src/data/` are not
+> hand-checked. A plan that keeps to those hours can still arrive at a closed door. Every plan built from this data
+> says so. Do not rely on a plan until the data has been replaced with checked information
 > (see [Replacing the sample Boston data](backend/README.md#replacing-the-sample-boston-data)).
 
 ## Status
@@ -42,8 +46,8 @@ What is different from the real thing:
 
 - **Sign-in is fake.** Any name or email address works, and nobody is emailed.
 - **Nothing is saved.** The data is in memory and is gone when the server stops.
-- **The AI model is a scripted stand-in**, so no Bedrock call is made. The scheduling, subway routing, safety rules
-  and final check are the real code.
+- **The AI model is a scripted stand-in**, so no Bedrock call is made. The scheduling, subway routing and final check
+  are the real code.
 - **Only this computer can reach it.** The API listens on `127.0.0.1`.
 - **The maps need the internet.** Locally they are drawn from OpenStreetMap tiles. With a deployed stack's maps key
   they are drawn from Amazon Location (see
@@ -58,7 +62,7 @@ The local server must never be deployed, because it has no real sign-in. The set
 1. `POST /plans` checks the request, counts it against your **3 plans per calendar month** and answers `202` at once.
 2. The planner function makes one AI call. The AI only chooses which places go on which day and in what order.
 3. Fixed code sets the times, routes each leg over the stored subway network, and applies the opening-hours and
-   safety rules.
+   last-train rules.
 4. A final check refuses any plan that breaks a rule. A refused or failed plan gives its monthly count back.
 5. You poll `GET /plans/{planId}` until the plan is `SUCCEEDED` or `FAILED`. A plan can be read as JSON or Markdown.
 

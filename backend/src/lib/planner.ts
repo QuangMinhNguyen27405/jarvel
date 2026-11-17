@@ -14,7 +14,7 @@ import { AiError, chooseStops, type ConverseFn, type ModelPrices } from './ai.js
 import type { BostonData } from './data.js';
 import type { Logger, Metrics } from './log.js';
 import type { QuotaStore } from './quota.js';
-import { buildItinerary, NoSafePlanError, resolveWishlist } from './scheduler.js';
+import { buildItinerary, NoPlanError, resolveWishlist } from './scheduler.js';
 import type { PlanStore } from './store.js';
 import { bostonMonthKey, listDates } from './time.js';
 import { validateItinerary } from './validator.js';
@@ -27,8 +27,8 @@ export const FAILURE_REASONS: Record<PlanFailureKind, string> = {
     'The planning assistant could not produce a usable answer. Your monthly plan count was given back, so please try again.',
   internal:
     'Something went wrong on our side while building your plan. Your monthly plan count was given back, so please try again.',
-  'no-safe-plan':
-    'We could not build a plan that meets every safety and last-train rule for these dates. Your monthly plan count was given back.',
+  'no-plan':
+    'We could not build a plan that works by public transport for these dates and times. Your monthly plan count was given back.',
 };
 
 export class DeadlineError extends Error {
@@ -101,7 +101,6 @@ const STEPS: { agent: AgentName; summary: string }[] = [
   { agent: 'researcher', summary: 'Chose and ordered your stops' },
   { agent: 'scheduler', summary: 'Timed each day' },
   { agent: 'transit', summary: 'Planned public transport between stops' },
-  { agent: 'safety', summary: 'Checked every item against the safety rules' },
   { agent: 'critic', summary: 'Checked the finished plan with fixed rules' },
 ];
 
@@ -118,7 +117,7 @@ function progressAt(done: number, now: Date, failed = false): AgentProgress[] {
 function classify(error: unknown): PlanFailureKind {
   if (error instanceof DeadlineError) return 'timeout';
   if (error instanceof AiError) return 'ai-error';
-  if (error instanceof NoSafePlanError) return 'no-safe-plan';
+  if (error instanceof NoPlanError) return 'no-plan';
   return 'internal';
 }
 
@@ -156,14 +155,14 @@ async function build(plan: PlanRecord, deps: PlannerDeps, signal: AbortSignal, s
       modelId: deps.modelId,
       generatedAt: deps.now().toISOString(),
     });
-    state.stage = 4;
+    state.stage = STEPS.length - 1;
     const violations = validateItinerary(itinerary, request, deps.data);
     if (violations.length > 0) {
       deps.log.warn('plan failed the final fixed-rule check', {
         planId: plan.planId,
         violations: violations.slice(0, 10).map((v) => `${v.rule}: ${v.message}`),
       });
-      throw new NoSafePlanError(`${violations.length} rule violation(s) in the finished plan`);
+      throw new NoPlanError(`${violations.length} rule violation(s) in the finished plan`);
     }
     return itinerary;
   } catch (error) {

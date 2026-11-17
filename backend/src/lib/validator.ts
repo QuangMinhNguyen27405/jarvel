@@ -1,11 +1,10 @@
 // The final fixed-rule check of a finished plan (FR4.3, US4.4). It never trusts the scheduler or the AI: it
 // recomputes every rule from the itinerary and the Boston data. Any violation means the plan is not SUCCEEDED.
-import type { ItineraryItem, Itinerary, LineId, TripRequest } from '@jarvel/shared';
+import type { ItineraryItem, Itinerary, LineId, TransitLeg, TripRequest } from '@jarvel/shared';
 import type { BostonData } from './data.js';
 import { isOpenFor } from './hours.js';
 import { serviceWindow } from './router.js';
-import { checkAreaAtTime, checkLegSafety, stepWindows } from './safety.js';
-import { resolveWishlist, safetyContextFor, tripContext, type TripContext } from './scheduler.js';
+import { resolveWishlist, tripContext, type TripContext } from './scheduler.js';
 import { isValidHHMM, parseHHMM, weekdayOf } from './time.js';
 
 export type ViolationRule =
@@ -13,7 +12,6 @@ export type ViolationRule =
   | 'bad-time'
   | 'overlap'
   | 'out-of-window'
-  | 'safety'
   | 'opening-hours'
   | 'service-hours'
   | 'walk-limit'
@@ -21,9 +19,7 @@ export type ViolationRule =
   | 'missing-leg'
   | 'unknown-place'
   | 'duplicate-place'
-  | 'wishlist'
-  | 'disclaimer'
-  | 'guidance';
+  | 'wishlist';
 
 export interface Violation {
   rule: ViolationRule;
@@ -40,12 +36,14 @@ function locationKey(item: ItineraryItem): string | undefined {
   return undefined;
 }
 
-function locationArea(item: ItineraryItem | undefined, trip: TripContext): string | undefined {
-  if (!item) return undefined;
-  if (item.placeId) return trip.data.placeById.get(item.placeId)?.safetyAreaId;
-  if (item.kind === 'hotel') return trip.hotel.areaId;
-  if (item.kind === 'airport') return trip.airport?.areaId;
-  return undefined;
+/** Start and end minute of each step of a leg that starts at `start`. */
+function stepWindows(leg: TransitLeg, start: number): { index: number; start: number; end: number }[] {
+  let cursor = start;
+  return leg.steps.map((step, index) => {
+    const window = { index, start: cursor, end: cursor + step.minutes };
+    cursor += step.minutes;
+    return window;
+  });
 }
 
 function checkTimes(date: string, items: ItineraryItem[], trip: TripContext, out: Violation[]): boolean {
@@ -101,13 +99,7 @@ function checkTimes(date: string, items: ItineraryItem[], trip: TripContext, out
   return true;
 }
 
-function checkLeg(
-  date: string,
-  item: ItineraryItem,
-  ends: { fromAreaId?: string; toAreaId?: string },
-  trip: TripContext,
-  out: Violation[],
-): void {
+function checkLeg(date: string, item: ItineraryItem, trip: TripContext, out: Violation[]): void {
   const leg = item.transit;
   if (!leg) {
     out.push({ rule: 'missing-leg', date, itemId: item.id, message: `${item.title} has no route` });
@@ -143,8 +135,6 @@ function checkLeg(
       }
     }
   }
-  const verdict = checkLegSafety(leg, start, ends, trip.data, safetyContextFor(trip, date));
-  if (!verdict.allowed) out.push({ rule: 'safety', date, itemId: item.id, message: verdict.message });
 }
 
 function checkDayItems(
@@ -154,17 +144,11 @@ function checkDayItems(
   seen: Set<string>,
   out: Violation[],
 ): void {
-  const context = safetyContextFor(trip, date);
   let previousLocated: ItineraryItem | undefined;
   let legSincePrevious = false;
-  items.forEach((item, index) => {
+  items.forEach((item) => {
     if (item.kind === 'transit') {
-      const next = items.slice(index + 1).find((candidate) => locationKey(candidate) !== undefined);
-      // A leg with nothing located before it that day leaves from where the traveler slept: the hotel. Since
-      // opening hours (FR12) such a leg can leave after sunset, when the day's first stop is a dinner, and it must
-      // be judged by the hotel's own area, not as leaving a place with no safety information.
-      const fromAreaId = previousLocated ? locationArea(previousLocated, trip) : trip.hotel.areaId;
-      checkLeg(date, item, { fromAreaId, toAreaId: locationArea(next, trip) }, trip, out);
+      checkLeg(date, item, trip, out);
       legSincePrevious = true;
       return;
     }
@@ -183,8 +167,6 @@ function checkDayItems(
         seen.add(place.id);
         const start = parseHHMM(item.start);
         const end = parseHHMM(item.end);
-        const verdict = checkAreaAtTime(place.safetyAreaId, start, end, context);
-        if (!verdict.allowed) out.push({ rule: 'safety', date, itemId: item.id, message: verdict.message });
         // FR12: the whole stop must be inside one opening period of the place on this date.
         if (!isOpenFor(place, date, start, end)) {
           out.push({
@@ -241,12 +223,8 @@ export function validateItinerary(itinerary: Itinerary, request: TripRequest, da
       message: `Expected days ${trip.dates.join(', ')}, got ${dates.join(', ') || 'none'}`,
     });
   }
-  if (itinerary.disclaimer.trim() === '')
-    violations.push({ rule: 'disclaimer', message: 'The plan has no disclaimer' });
   const seen = new Set<string>();
   for (const day of itinerary.days) {
-    if (day.safetyGuidance.length === 0)
-      violations.push({ rule: 'guidance', date: day.date, message: 'The day has no safety guidance' });
     if (checkTimes(day.date, day.items, trip, violations)) checkDayItems(day.date, day.items, trip, seen, violations);
   }
   checkWishlist(itinerary, request, data, violations);

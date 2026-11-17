@@ -1,10 +1,10 @@
 // Checks the Boston data files before they are used or deployed (FR9.1, US6.4): structure, references,
 // HH:MM times and unique ids. `checkBostonData` never throws on bad data; it returns every issue it finds.
-import { UNKNOWN_SAFETY_AREA_ID, type Place, type SafetyKnowledge, type TransitNetwork } from '@jarvel/shared';
+import type { Place, TransitNetwork } from '@jarvel/shared';
 import { z } from 'zod';
 import { isValidHHMM } from './time.js';
 
-export type DataFileName = 'places' | 'transit' | 'safety';
+export type DataFileName = 'places' | 'transit';
 
 export interface DataIssue {
   file: DataFileName;
@@ -22,17 +22,14 @@ export interface DataFileMeta {
 export interface RawBostonFiles {
   places: unknown;
   transit: unknown;
-  safety: unknown;
 }
 
 export interface ParsedBostonFiles {
   places: DataFileMeta & { places: Place[] };
   transit: DataFileMeta & { network: TransitNetwork };
-  safety: DataFileMeta & { safety: SafetyKnowledge };
 }
 
 const dayKey = z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']);
-const riskLevel = z.enum(['low', 'moderate', 'elevated']);
 const money = z.object({ low: z.number().min(0), high: z.number().min(0) });
 const latitude = z.number().min(-90).max(90);
 const longitude = z.number().min(-180).max(180);
@@ -63,7 +60,6 @@ const placeSchema = z.object({
   ]),
   cuisine: z.string().optional(),
   neighborhood: z.string().min(1),
-  safetyAreaId: z.string().min(1),
   address: z.string().min(1),
   lat: latitude,
   lng: longitude,
@@ -158,34 +154,8 @@ const networkSchema = z.object({
   sourceUrls: z.array(z.string()),
 });
 
-const safetySchema = z.object({
-  areas: z.array(
-    z.object({
-      id: z.string().min(1),
-      name: z.string().min(1),
-      center: z.object({ lat: latitude, lng: longitude }),
-      radiusKm: z.number().positive(),
-      bpdDistricts: z.array(z.string()),
-      dayRisk: riskLevel,
-      nightRisk: riskLevel,
-      avoidAfter: z.string().optional(),
-      notes: z.string().min(1),
-    }),
-  ),
-  generalTips: z.array(z.string()),
-  crimeApi: z.object({
-    endpoint: z.string(),
-    resourceId: z.string(),
-    districtField: z.string(),
-    dateField: z.string(),
-    notes: z.string(),
-  }),
-  sourceUrls: z.array(z.string()),
-});
-
 const placesFileSchema = z.object({ ...metaShape, places: z.array(placeSchema) });
 const transitFileSchema = z.object({ ...metaShape, network: networkSchema });
-const safetyFileSchema = z.object({ ...metaShape, safety: safetySchema });
 
 function structuralIssues(file: DataFileName, error: z.ZodError): DataIssue[] {
   return error.issues.map((issue) => ({ file, path: issue.path.join('.') || '(file)', message: issue.message }));
@@ -207,7 +177,6 @@ function timeIssue(file: DataFileName, path: string, value: string, maxHour = 23
 
 function checkPlaces(files: ParsedBostonFiles): DataIssue[] {
   const stationIds = new Set(files.transit.network.stations.map((s) => s.id));
-  const areaIds = new Set(files.safety.safety.areas.map((a) => a.id));
   const issues = duplicateIds(
     'places',
     'places',
@@ -220,13 +189,6 @@ function checkPlaces(files: ParsedBostonFiles): DataIssue[] {
         file: 'places',
         path: `${base}.nearestStationId`,
         message: `Place "${place.id}" points to station "${place.nearestStationId}", which does not exist`,
-      });
-    }
-    if (place.safetyAreaId !== UNKNOWN_SAFETY_AREA_ID && !areaIds.has(place.safetyAreaId)) {
-      issues.push({
-        file: 'places',
-        path: `${base}.safetyAreaId`,
-        message: `Place "${place.id}" points to safety area "${place.safetyAreaId}", which does not exist`,
       });
     }
     for (const [day, ranges] of Object.entries(place.hours)) {
@@ -316,41 +278,17 @@ function checkTransit(files: ParsedBostonFiles): DataIssue[] {
   return issues;
 }
 
-function checkSafety(files: ParsedBostonFiles): DataIssue[] {
-  const areas = files.safety.safety.areas;
-  const issues = duplicateIds(
-    'safety',
-    'safety.areas',
-    areas.map((a) => a.id),
-  );
-  areas.forEach((area, index) => {
-    if (area.id === UNKNOWN_SAFETY_AREA_ID) {
-      issues.push({
-        file: 'safety',
-        path: `safety.areas.${index}.id`,
-        message: `"${UNKNOWN_SAFETY_AREA_ID}" is reserved for places with no safety information`,
-      });
-    }
-    if (area.avoidAfter !== undefined) {
-      issues.push(...timeIssue('safety', `safety.areas.${index}.avoidAfter`, area.avoidAfter));
-    }
-  });
-  return issues;
-}
-
-/** Checks the three Boston data files and returns every issue; `data` is set only when there are none. */
+/** Checks the two Boston data files and returns every issue; `data` is set only when there are none. */
 export function checkBostonData(raw: RawBostonFiles): { issues: DataIssue[]; data?: ParsedBostonFiles } {
   const places = placesFileSchema.safeParse(raw.places);
   const transit = transitFileSchema.safeParse(raw.transit);
-  const safety = safetyFileSchema.safeParse(raw.safety);
   const structural = [
     ...(places.success ? [] : structuralIssues('places', places.error)),
     ...(transit.success ? [] : structuralIssues('transit', transit.error)),
-    ...(safety.success ? [] : structuralIssues('safety', safety.error)),
   ];
-  if (!places.success || !transit.success || !safety.success) return { issues: structural };
-  const files = { places: places.data, transit: transit.data, safety: safety.data } as ParsedBostonFiles;
-  const issues = [...checkPlaces(files), ...checkTransit(files), ...checkSafety(files)];
+  if (!places.success || !transit.success) return { issues: structural };
+  const files = { places: places.data, transit: transit.data } as ParsedBostonFiles;
+  const issues = [...checkPlaces(files), ...checkTransit(files)];
   return issues.length === 0 ? { issues, data: files } : { issues };
 }
 

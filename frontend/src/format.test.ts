@@ -161,9 +161,9 @@ describe('transit summary', () => {
 });
 
 describe('build progress', () => {
-  it('lists the five steps in order and waits on every step a plan has not reported', () => {
+  it('lists the four steps in order, with no safety step, and waits on every step a plan has not reported', () => {
     const { steps, reached } = buildProgress(undefined);
-    expect(steps.map((step) => step.label)).toEqual(['Stops', 'Timing', 'Transit', 'Safety check', 'Final check']);
+    expect(steps.map((step) => step.label)).toEqual(['Stops', 'Timing', 'Transit', 'Final check']);
     expect(steps.every((step) => step.status === 'pending')).toBe(true);
     expect(reached).toBe(-1);
   });
@@ -179,7 +179,6 @@ describe('build progress', () => {
       'Stops: done',
       'Timing: done',
       'Transit: working',
-      'Safety check: waiting',
       'Final check: waiting',
     ]);
     expect(reached).toBe(2);
@@ -189,12 +188,11 @@ describe('build progress', () => {
     const { steps, reached } = buildProgress([
       { agent: 'researcher', status: 'done' },
       { agent: 'scheduler', status: 'done' },
-      { agent: 'transit', status: 'done' },
-      { agent: 'safety', status: 'failed' },
+      { agent: 'transit', status: 'failed' },
       { agent: 'critic', status: 'skipped' },
     ]);
-    expect(steps.map((step) => step.status)).toEqual(['done', 'done', 'done', 'failed', 'skipped']);
-    expect(steps[3]!.aria).toBe('Safety check: stopped here');
-    expect(reached).toBe(3);
+    expect(steps.map((step) => step.status)).toEqual(['done', 'done', 'failed', 'skipped']);
+    expect(steps[2]!.aria).toBe('Transit: stopped here');
+    expect(reached).toBe(2);
   });
 });

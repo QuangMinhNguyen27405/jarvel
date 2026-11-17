@@ -33,7 +33,6 @@ function record(overrides: Partial<PlanRecord> = {}): PlanRecord {
           items: [{ id: 'i1', start: '10:00', end: '11:00', title: 'Library', description: 'Books' }],
         },
       ],
-      safetyBrief: ['Stay aware'],
       costs: { total: { low: 10, high: 20 } },
     },
     ...overrides,
@@ -171,7 +170,6 @@ describe('the trip map (Nov 3 request)', () => {
             items: [located('c', 'meal', 'Cafe', 42.36, -71.05), located('d', 'hotel', 'Back at hotel', 42.3586, -71.0585)],
           },
         ],
-        safetyBrief: [],
         costs: { total: { low: 0, high: 0 } },
       } as unknown as PlanRecord['itinerary'],
     });
@@ -373,7 +371,6 @@ describe('the travel design (Nov 16 redesign)', () => {
             walkingMinutes: 42,
             cost: { low: 26, high: 45 },
             paceNote: '',
-            safetyGuidance: ['Chinatown: stay on the main streets after dark.'],
             items: [
               { id: 'a', kind: 'airport', start: '10:00', end: '10:30', title: 'Logan Airport', description: 'Collect your bags.', cost: free },
               { id: 't1', kind: 'transit', start: '10:30', end: '10:54', title: 'Logan Airport to My hotel', description: '', cost: free, transit: blueLeg },
@@ -389,7 +386,6 @@ describe('the travel design (Nov 16 redesign)', () => {
                 cost: { low: 15, high: 25 },
                 isWishlist: true,
                 bookingTip: 'Free tours at 11:00.',
-                safety: { level: 'low', note: 'Busy and well lit.' },
                 location: { lat: 42.3493, lng: -71.0782 },
               },
             ],
@@ -401,15 +397,13 @@ describe('the travel design (Nov 16 redesign)', () => {
             walkingMinutes: 14,
             cost: { low: 55, high: 95 },
             paceNote: '',
-            safetyGuidance: ['Waterfront: well lit in the evening.'],
             items: [
               { id: 'aq', kind: 'visit', start: '09:30', end: '11:30', title: 'Aquarium', description: 'Penguins.', cost: { low: 30, high: 30 }, location: { lat: 42.3592, lng: -71.0495 } },
             ],
           },
         ],
-        safetyBrief: ['Keep your phone out of sight on crowded trains.'],
         transitBrief: ['Buy a CharlieCard at any station.'],
-        disclaimer: 'Safety information in this plan is guidance, not a guarantee.',
+        disclaimer: 'This plan was built from SAMPLE data that has not been hand-checked.',
         unscheduled: [],
         criticIssues: [],
         costs: { total: { low: 178, high: 302 }, transitPassAdvice: 'Single fares are cheaper than a pass.' },
@@ -532,7 +526,7 @@ describe('the travel design (Nov 16 redesign)', () => {
     expect(within(day).queryByText('Walk 13 min from My hotel to Library')).not.toBeInTheDocument();
   });
 
-  it('numbers a stop like its map pin and opens to its details, tip and safety note', async () => {
+  it('numbers a stop like its map pin and opens to its details and tip', async () => {
     await openPlan(readyPlan());
     const day = await screen.findByRole('region', { name: 'Arrival + Library' });
     const library = within(day).getByText('Library').closest('li')!;
@@ -541,7 +535,6 @@ describe('the travel design (Nov 16 redesign)', () => {
     expect(within(library).getByTestId('wishlist-stop')).toHaveTextContent('From your list');
     expect(within(library).getByText('Until 12:27. A grand reading room.')).toBeInTheDocument();
     expect(within(library).getByText('Free tours at 11:00.')).toBeInTheDocument();
-    expect(within(library).getByText('Busy and well lit.')).toBeInTheDocument();
     expect(within(within(day).getByText('Check in at My hotel').closest('li')!).getByText('H')).toBeInTheDocument();
     // The map numbers the same stop the same way. Its pins arrive a moment after the page: the map library is
     // loaded when a map is first shown.
@@ -553,26 +546,35 @@ describe('the travel design (Nov 16 redesign)', () => {
     expect(screen.queryByText('From your list', { selector: 'p' })).not.toBeInTheDocument();
   });
 
-  it('keeps the safety notes whole behind "Safety", and the "Safety" button opens them', async () => {
+  it('shows how to get around and the sample-data disclaimer in the notes, and nothing about safety', async () => {
     await openPlan(readyPlan());
-    const safety = (await screen.findByRole('heading', { level: 3, name: 'Safety' })).closest('details')!;
-    expect(safety).not.toHaveAttribute('open');
-    expect(within(safety).getByText('Chinatown: stay on the main streets after dark.')).toBeInTheDocument();
-    expect(within(safety).getByText('Keep your phone out of sight on crowded trains.')).toBeInTheDocument();
-    expect(within(safety).getByText('Safety information in this plan is guidance, not a guarantee.')).toBeInTheDocument();
-    const around = screen.getByRole('heading', { level: 3, name: 'Getting around' }).closest('details')!;
+    const around = (await screen.findByRole('heading', { level: 3, name: 'Getting around' })).closest('details')!;
     expect(within(around).getByText('Buy a CharlieCard at any station.')).toBeInTheDocument();
     expect(within(around).getByText('Single fares are cheaper than a pass.')).toBeInTheDocument();
+    // The disclaimer is not folded away: it is read without opening anything.
+    const disclaimer = screen.getByText('This plan was built from SAMPLE data that has not been hand-checked.');
+    expect(disclaimer.closest('details')).toBeNull();
+    // The safety rules are not part of this version: no Safety button, no Safety notes, on any day.
+    for (const day of ['Wed, Nov 18', 'Thu, Nov 19']) {
+      fireEvent.click(screen.getByRole('button', { name: day }));
+      expect(screen.queryByRole('button', { name: 'Safety' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Safety' })).not.toBeInTheDocument();
+      expect(document.body.textContent).not.toMatch(/safety/i);
+    }
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Safety' }));
-    expect(screen.getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Itinerary' })).toHaveAttribute('aria-pressed', 'false');
-    expect(safety).toHaveAttribute('open');
-
-    // The day's guidance follows the selected day.
-    fireEvent.click(screen.getByRole('button', { name: 'Thu, Nov 19' }));
-    expect(within(safety).getByText('Waterfront: well lit in the evening.')).toBeInTheDocument();
-    expect(within(safety).queryByText('Chinatown: stay on the main streets after dark.')).not.toBeInTheDocument();
+  it('ignores the safety notes of a plan saved before they were removed', async () => {
+    const older = readyPlan();
+    const itinerary = older.itinerary as unknown as Record<string, unknown> & { days: Record<string, unknown>[] };
+    itinerary.safetyBrief = ['Keep your phone out of sight on crowded trains.'];
+    itinerary.days[0]!.safetyGuidance = ['Chinatown: stay on the main streets after dark.'];
+    (itinerary.days[0]!.items as Record<string, unknown>[])[4]!.safety = { level: 'low', note: 'Busy and well lit.' };
+    await openPlan(older);
+    expect(await screen.findByRole('heading', { level: 3, name: 'Getting around' })).toBeInTheDocument();
+    expect(screen.queryByText('Busy and well lit.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/main streets after dark/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/out of sight/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Safety' })).not.toBeInTheDocument();
   });
 
   it('hides what a plan does not have, without printing "undefined"', async () => {
@@ -590,7 +592,6 @@ describe('the travel design (Nov 16 redesign)', () => {
             ],
           },
         ],
-        safetyBrief: [],
         costs: { total: { low: 0, high: 0 } },
       } as unknown as PlanRecord['itinerary'],
     });
@@ -600,17 +601,16 @@ describe('the travel design (Nov 16 redesign)', () => {
     expect(screen.queryByText(/each$/)).not.toBeInTheDocument();
     expect(screen.queryByRole('img', { name: /walking/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('img', { name: /per person/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Safety' })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Getting around' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Safety' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Not scheduled' })).not.toBeInTheDocument();
   });
 
   it('shows a waiting plan with every step still to come', async () => {
     await openPlan(record({ status: 'QUEUED', itinerary: undefined, progress: [] }));
     expect(await screen.findByRole('heading', { level: 2, name: 'Waiting to start' })).toBeInTheDocument();
-    expect(screen.queryByText(/of 5/)).not.toBeInTheDocument();
-    expect(document.body.textContent).not.toMatch(/of 5/);
-    for (const step of ['Stops', 'Timing', 'Transit', 'Safety check', 'Final check']) {
+    expect(document.body.textContent).not.toMatch(/of 4/);
+    expect(screen.queryByLabelText(/Safety check/)).not.toBeInTheDocument();
+    for (const step of ['Stops', 'Timing', 'Transit', 'Final check']) {
       expect(screen.getByLabelText(`${step}: waiting`)).toBeInTheDocument();
     }
   });
@@ -623,16 +623,15 @@ describe('the travel design (Nov 16 redesign)', () => {
         { agent: 'researcher', status: 'done' },
         { agent: 'scheduler', status: 'done' },
         { agent: 'transit', status: 'running' },
-        { agent: 'safety', status: 'pending' },
+        { agent: 'critic', status: 'pending' },
       ],
     });
     await openPlan(running);
     expect(await screen.findByRole('heading', { level: 2, name: 'Building your plan' })).toBeInTheDocument();
-    expect(screen.getByText('3 of 5')).toBeInTheDocument();
+    expect(screen.getByText('3 of 4')).toBeInTheDocument();
     expect(screen.getByLabelText('Stops: done')).toBeInTheDocument();
     expect(screen.getByLabelText('Timing: done')).toBeInTheDocument();
     expect(screen.getByLabelText('Transit: working')).toBeInTheDocument();
-    expect(screen.getByLabelText('Safety check: waiting')).toBeInTheDocument();
     expect(screen.getByLabelText('Final check: waiting')).toBeInTheDocument();
     expect(screen.getByText('Building…')).toBeInTheDocument();
   });
@@ -641,20 +640,21 @@ describe('the travel design (Nov 16 redesign)', () => {
     const failed = record({
       status: 'FAILED',
       itinerary: undefined,
-      error: 'We could not build a plan that meets every safety rule for these dates.',
+      error: 'We could not build a plan that works by public transport for these dates and times.',
       progress: [
         { agent: 'researcher', status: 'done' },
         { agent: 'scheduler', status: 'done' },
         { agent: 'transit', status: 'done' },
-        { agent: 'safety', status: 'failed' },
-        { agent: 'critic', status: 'skipped' },
+        { agent: 'critic', status: 'failed' },
       ],
     });
     await openPlan(failed);
     expect(await screen.findByRole('heading', { level: 2, name: 'This plan could not be built' })).toBeInTheDocument();
-    expect(screen.getByText('We could not build a plan that meets every safety rule for these dates.')).toBeInTheDocument();
-    expect(screen.getByLabelText('Safety check: stopped here')).toBeInTheDocument();
-    expect(screen.getByLabelText('Final check: skipped')).toBeInTheDocument();
+    expect(
+      screen.getByText('We could not build a plan that works by public transport for these dates and times.'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Transit: done')).toBeInTheDocument();
+    expect(screen.getByLabelText('Final check: stopped here')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'New trip' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'New trip' })).toBeInTheDocument();
   });

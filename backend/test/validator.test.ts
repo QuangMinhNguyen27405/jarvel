@@ -2,9 +2,8 @@ import type { Itinerary } from '@jarvel/shared';
 import { describe, expect, it } from 'vitest';
 import { loadBostonData } from '../src/lib/data.js';
 import { buildItinerary } from '../src/lib/scheduler.js';
-import { sunsetHHMM } from '../src/lib/sun.js';
 import { validateItinerary, type ViolationRule } from '../src/lib/validator.js';
-import { area, hoursOf, sampleDataWith } from './fixtures/data.js';
+import { hoursOf, sampleDataWith } from './fixtures/data.js';
 import { baseSelection } from './fixtures/fake-ai.js';
 import { validTripRequest } from './fixtures/requests.js';
 
@@ -27,7 +26,7 @@ const rules = (itinerary: Itinerary, d = data): ViolationRule[] =>
 /** Day 2 of the base plan: hotel -> aquarium (leg, visit) -> Faneuil Hall (leg, visit) -> hotel (leg, marker). */
 const day2 = (itinerary: Itinerary) => itinerary.days[1]!;
 
-describe('validateItinerary (FR4.3)', () => {
+describe('validateItinerary', () => {
   it('finds zero violations in a plan built by the scheduler (AC4.4.4)', () => {
     expect(validateItinerary(goodPlan(), request, data)).toEqual([]);
   });
@@ -36,14 +35,6 @@ describe('validateItinerary (FR4.3)', () => {
     const itinerary = goodPlan();
     day2(itinerary).items[1]!.end = '23:00';
     expect(rules(itinerary)).toContain('overlap');
-  });
-
-  it('finds a stop the AI placed after the area’s avoid-after time (AC4.4.1)', () => {
-    const strictData = sampleDataWith((files) => {
-      area(files, 'waterfront').avoidAfter = '10:00';
-    });
-    // The good plan keeps the aquarium at 09:09-11:09, which breaks the new 10:00 avoid-after rule.
-    expect(rules(goodPlan(), strictData)).toContain('safety');
   });
 
   it('finds a ride before the first train or after the last one (AC4.7.3)', () => {
@@ -75,13 +66,17 @@ describe('validateItinerary (FR4.3)', () => {
     expect(rules(noLeg)).toContain('missing-leg');
   });
 
-  it('finds a wishlist entry that is neither scheduled nor listed, and a missing disclaimer, guidance or day', () => {
+  it('finds a wishlist entry that is neither scheduled nor listed, and a missing day', () => {
     const itinerary = goodPlan();
     itinerary.days[2]!.items = itinerary.days[2]!.items.filter((i) => i.placeId !== 'harvard-yard');
-    itinerary.disclaimer = '';
-    itinerary.days[0]!.safetyGuidance = [];
     itinerary.days.pop();
-    expect(rules(itinerary)).toEqual(expect.arrayContaining(['wishlist', 'disclaimer', 'guidance', 'day-count']));
+    expect(rules(itinerary)).toEqual(expect.arrayContaining(['wishlist', 'day-count']));
+  });
+
+  it('asks for no disclaimer: a plan built from hand-checked data has none', () => {
+    const itinerary = goodPlan();
+    delete itinerary.disclaimer;
+    expect(rules(itinerary)).toEqual([]);
   });
 
   it('finds items outside the day window and invalid times', () => {
@@ -137,8 +132,9 @@ describe('validateItinerary: opening hours (FR12, US7.3)', () => {
     expect(rules(goodPlan(), aquariumOn(undefined))).toEqual([]);
   });
 
-  it('judges a day’s first leg by the hotel’s own area when it leaves after sunset', () => {
+  it('accepts a day whose first leg leaves the hotel after dark, from any hotel', () => {
     // A dinner-only stop: the traveler leaves the hotel after dark, and nothing comes before that leg in the day.
+    // The safety rules are not part of this version, so neither the hour nor the hotel's area matters.
     const dinnerOnly = sampleDataWith((files) => {
       hoursOf(files, 'sample-pho-house-chinatown').fri = [['17:30', '22:00']];
     });
@@ -152,13 +148,7 @@ describe('validateItinerary: opening hours (FR12, US7.3)', () => {
     });
     const first = itinerary.days[2]!.items[0]!;
     expect(first.kind).toBe('transit');
-    expect(first.start > sunsetHHMM('2026-11-20')).toBe(true);
+    expect(first.start > '17:00').toBe(true); // Boston's sunset on Nov 20 is about 16:20
     expect(validateItinerary(itinerary, dinner, dinnerOnly)).toEqual([]);
-
-    // From a hotel outside every safety area, the same leg is still refused after dark (FR4.5).
-    const unknownHotel = { ...dinner, hotel: { ...dinner.hotel, lat: 42.33, lng: -71.03 } };
-    expect(validateItinerary(itinerary, unknownHotel, dinnerOnly)).toContainEqual(
-      expect.objectContaining({ rule: 'safety', itemId: first.id }),
-    );
   });
 });

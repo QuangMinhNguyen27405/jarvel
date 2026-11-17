@@ -19,7 +19,7 @@ export function queuedPlan(overrides: Partial<PlanRecord> = {}): PlanRecord {
     request: validTripRequest(),
     revisions: [],
     progress: [],
-    dataVersion: 'places@test,transit@test,safety@test',
+    dataVersion: 'places@test,transit@test',
     sourceCredits: ['Test credits'],
     aiCostUSD: 0,
     durationMs: null,

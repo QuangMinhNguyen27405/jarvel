@@ -33,7 +33,6 @@ export interface Place {
   category: PlaceCategory;
   cuisine?: string; // e.g. "Vietnamese", "Taiwanese", "Burgers"
   neighborhood: string; // e.g. "Back Bay", "Chinatown", "Cambridge - Harvard Square"
-  safetyAreaId: string; // -> SafetyArea.id
   address: string;
   lat: number;
   lng: number;
@@ -130,34 +129,6 @@ export interface TransitNetwork {
   sourceUrls: string[];
 }
 
-export type RiskLevel = 'low' | 'moderate' | 'elevated';
-
-export interface SafetyArea {
-  id: string; // e.g. "back-bay", "downtown-crossing", "chinatown", "revere-beach"
-  name: string;
-  center: { lat: number; lng: number };
-  radiusKm: number;
-  bpdDistricts: string[]; // Boston Police district codes e.g. ["A1"], [] outside Boston
-  dayRisk: RiskLevel;
-  nightRisk: RiskLevel;
-  avoidAfter?: string; // "HH:MM" — scheduler must not place visits here after this
-  notes: string; // concrete, non-alarmist guidance
-}
-
-export interface SafetyKnowledge {
-  areas: SafetyArea[];
-  generalTips: string[];
-  crimeApi: {
-    // Analyze Boston CKAN datastore (Crime Incident Reports)
-    endpoint: string; // e.g. "https://data.boston.gov/api/3/action/datastore_search_sql"
-    resourceId: string;
-    districtField: string;
-    dateField: string;
-    notes: string;
-  };
-  sourceUrls: string[];
-}
-
 export interface TripDefaults {
   hotel: HotelInfo;
   arrival: string; // "2026-11-18T10:00"
@@ -190,12 +161,10 @@ export interface HotelInfo {
 // ---------------------------------------------------------------------------
 
 export type Pace = 'relaxed' | 'moderate' | 'packed';
-export type SafetyStrictness = 'standard' | 'strict';
 export type BudgetLevel = 'budget' | 'moderate' | 'splurge';
 
 export interface TripPreferences {
   pace: Pace; // relaxed = max ~3 major stops/day, >=30 min buffers
-  safety: SafetyStrictness; // strict = also avoid 'moderate' nightRisk areas after dark
   budgetLevel: BudgetLevel;
   transport: 'subway-first' | 'mixed';
   maxWalkMinutes: number; // single walking leg cap, default 15
@@ -225,10 +194,9 @@ export interface ReviseRequest {
 
 export type AgentName =
   | 'researcher' // resolves wishlist, picks places, verifies hours
-  | 'safety' // crime stats + area risk by time of day
   | 'transit' // subway strategy, passes, airport/hotel logistics
   | 'scheduler' // drafts day-by-day itinerary at the requested pace
-  | 'critic' // validates (hours, rush, safety, walking) and requests fixes
+  | 'critic' // validates (hours, rush, walking) and requests fixes
   | 'budget'; // cost estimate
 
 export type AgentStatus = 'pending' | 'running' | 'done' | 'failed' | 'skipped';
@@ -245,7 +213,7 @@ export interface AgentProgress {
 export type PlanStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
 
 // Why a plan ended FAILED. Every kind gives the monthly count back (D6).
-export type PlanFailureKind = 'timeout' | 'ai-error' | 'internal' | 'no-safe-plan';
+export type PlanFailureKind = 'timeout' | 'ai-error' | 'internal' | 'no-plan';
 
 export interface PlanRecord {
   userId: string; // Cognito sub
@@ -304,7 +272,7 @@ export interface TransitLeg {
   steps: TransitStep[];
   durationMinutes: number;
   fareUSD: number;
-  rideshareReason?: string; // why subway was not used (late night, safety)
+  rideshareReason?: string; // why subway was not used (for example late at night)
 }
 
 export interface ItineraryItem {
@@ -317,7 +285,6 @@ export interface ItineraryItem {
   description: string;
   transit?: TransitLeg; // present when kind === 'transit'
   cost: Money; // per person
-  safety?: { level: RiskLevel; note: string };
   bookingTip?: string;
   isWishlist?: boolean;
   location?: { lat: number; lng: number }; // where a visit, meal or hotel item happens, for the trip map
@@ -340,7 +307,6 @@ export interface DayPlan {
   cost: Money;
   walkingMinutes: number;
   paceNote: string; // why this day is not rushed
-  safetyGuidance: string[]; // the safety guidance for this day (FR4.4)
 }
 
 export interface CostBreakdown {
@@ -355,7 +321,7 @@ export interface CostBreakdown {
 
 export interface CriticIssue {
   severity: 'blocker' | 'warning' | 'info';
-  category: 'hours' | 'safety' | 'pace' | 'walking' | 'transit' | 'wishlist' | 'timing' | 'budget';
+  category: 'hours' | 'pace' | 'walking' | 'transit' | 'wishlist' | 'timing' | 'budget';
   date?: string;
   itemId?: string;
   message: string;
@@ -365,11 +331,10 @@ export interface Itinerary {
   summary: string;
   days: DayPlan[];
   costs: CostBreakdown;
-  safetyBrief: string[]; // top safety guidance for this trip
   transitBrief: string[]; // CharlieCard, Blue Line from hotel, last trains, airport
   unscheduled: { placeId?: string; name: string; reason: string }[];
   criticIssues: CriticIssue[]; // remaining (non-blocker) issues after critique
-  disclaimer: string; // safety information is guidance, not a guarantee (FR4.4)
+  disclaimer?: string; // set when the plan was built from sample data that has not been hand-checked
   generatedAt: string;
   modelId: string;
 }
@@ -409,7 +374,6 @@ export interface CatalogResponse {
   defaults: TripDefaults;
   stations: Station[];
   lines: Line[];
-  safetyAreas: SafetyArea[];
 }
 
 export interface CreatePlanResponse {

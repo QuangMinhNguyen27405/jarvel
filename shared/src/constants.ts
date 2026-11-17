@@ -15,8 +15,5 @@ export const IDEMPOTENCY_TTL_HOURS = 24;
 /** Plans are deleted automatically this many days after the trip's departure date (FR8.2). */
 export const PLAN_RETENTION_DAYS = 90;
 
-/** Safety-area id meaning "no safety information for this place" (FR4.5): scheduled before sunset only. */
-export const UNKNOWN_SAFETY_AREA_ID = 'unknown';
-
 /** Boston's IANA time zone. Every date and time in the API is local to it (FR3.4). */
 export const BOSTON_TIME_ZONE = 'America/New_York';

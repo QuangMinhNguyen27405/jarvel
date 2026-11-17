@@ -6,16 +6,15 @@ import { isOpenFor } from '../src/lib/hours.js';
 import { renderPlanMarkdown } from '../src/lib/markdown.js';
 import {
   buildItinerary,
-  DISCLAIMER,
   LATE_START_TOLERANCE_MINUTES,
   MAX_WAIT_FOR_OPENING_MINUTES,
-  NoSafePlanError,
+  NoPlanError,
+  SAMPLE_DATA_WARNING,
   UNSCHEDULED_REASONS,
 } from '../src/lib/scheduler.js';
-import { sunsetHHMM } from '../src/lib/sun.js';
 import { formatHHMM, listDates, parseHHMM } from '../src/lib/time.js';
 import { validateItinerary } from '../src/lib/validator.js';
-import { area, hoursOf, line, sampleDataWith } from './fixtures/data.js';
+import { hoursOf, line, sampleDataWith } from './fixtures/data.js';
 import { baseSelection } from './fixtures/fake-ai.js';
 import { queuedPlan } from './fixtures/plans.js';
 import { validTripRequest } from './fixtures/requests.js';
@@ -69,7 +68,7 @@ describe('the day-by-day timeline (US4.1)', () => {
     }
   });
 
-  it('shows correct local dates, weekdays and sunsets across the DST change (AC4.1.5)', () => {
+  it('shows correct local dates and weekdays across the DST change (AC4.1.5)', () => {
     const request = validTripRequest({ arrival: '2026-10-31T10:00', departure: '2026-11-02T15:00' });
     const dst = plan({ days: [{ date: '2026-11-01', placeIds: ['harvard-yard'] }] }, request);
     expect(dst.days.map((d) => `${d.date}:${d.weekday}`)).toEqual([
@@ -77,9 +76,6 @@ describe('the day-by-day timeline (US4.1)', () => {
       '2026-11-01:sun',
       '2026-11-02:mon',
     ]);
-    expect(dst.days[0]!.safetyGuidance[0]).toContain(sunsetHHMM('2026-10-31'));
-    expect(dst.days[1]!.safetyGuidance[0]).toContain(sunsetHHMM('2026-11-01'));
-    expect(sunsetHHMM('2026-10-31') > sunsetHHMM('2026-11-01')).toBe(true);
     for (const item of dst.days.flatMap((d) => d.items)) expect(item.start).toMatch(/^\d{2}:\d{2}$/);
     expect(validateItinerary(dst, request, sample)).toEqual([]);
   });
@@ -112,53 +108,49 @@ describe('wishlist coverage (US4.2)', () => {
   });
 });
 
-describe('safety and the last train (US4.3, US4.4, US4.7)', () => {
-  describe('a Chinatown dinner the AI put after dark (moderate night risk in the sample data)', () => {
-    // A 6-hour aquarium visit pushes the meal past the Nov 19 sunset (about 16:20).
+describe('no safety rules in this version (removed on request, Nov 16)', () => {
+  // Boston's sunset on these dates is about 16:20. The removed rules kept some stops and walks in daylight.
+  it('keeps a stop the AI put after dark where the AI put it, and says nothing about safety', () => {
+    // A 6-hour aquarium visit pushes the Chinatown meal past sunset.
     const data = sampleDataWith((files) => {
       files.places.places.find((p) => p.id === 'new-england-aquarium')!.typicalDwellMinutes = 360;
     });
     const selection = {
       days: [{ date: '2026-11-19', placeIds: ['new-england-aquarium', 'harvard-yard', 'sample-pho-house-chinatown'] }],
     };
-    const prefs = validTripRequest().preferences;
-    const wishlist = ['New England Aquarium', 'Harvard Yard', 'Sample Pho House'];
-    const dayOf = (itinerary: Itinerary, placeId: string) =>
-      itinerary.days.find((d) => d.items.some((i) => i.placeId === placeId));
-
-    it('stays after dark under standard safety', () => {
-      const request = validTripRequest({ wishlist, preferences: { ...prefs, safety: 'standard' } });
-      const itinerary = plan(selection, request, data);
-      const pho = stops(itinerary).find((s) => s.placeId === 'sample-pho-house-chinatown')!;
-      expect(dayOf(itinerary, pho.placeId!)?.date).toBe('2026-11-19');
-      expect(minutes(pho.start)).toBeGreaterThan(minutes(sunsetHHMM('2026-11-19')));
-      expect(validateItinerary(itinerary, request, data)).toEqual([]);
-    });
-
-    it('is moved into daylight on another day under strict safety (AC4.3.3)', () => {
-      const request = validTripRequest({ wishlist, preferences: { ...prefs, safety: 'strict' } });
-      const itinerary = plan(selection, request, data);
-      const pho = stops(itinerary).find((s) => s.placeId === 'sample-pho-house-chinatown')!;
-      const date = dayOf(itinerary, pho.placeId!)!.date;
-      expect(date).not.toBe('2026-11-19');
-      expect(minutes(pho.end)).toBeLessThanOrEqual(minutes(sunsetHHMM(date)));
-      expect(itinerary.unscheduled).toEqual([]);
-      expect(validateItinerary(itinerary, request, data)).toEqual([]);
-    });
-  });
-
-  it('lists a stop that is unsafe at every possible time as "unsafe at the only possible time" (AC4.4.2)', () => {
-    const data = sampleDataWith((files) => {
-      area(files, 'revere-beach').avoidAfter = '08:00';
-    });
-    const request = validTripRequest({ wishlist: ['Revere Beach'] });
-    const itinerary = plan({ days: [{ date: '2026-11-19', placeIds: ['revere-beach'] }] }, request, data);
-    expect(itinerary.unscheduled).toEqual([
-      { placeId: 'revere-beach', name: 'Revere Beach', reason: UNSCHEDULED_REASONS.unsafe },
-    ]);
+    const request = validTripRequest({ wishlist: ['New England Aquarium', 'Harvard Yard', 'Sample Pho House'] });
+    const itinerary = plan(selection, request, data);
+    const day = itinerary.days.find((d) => d.items.some((i) => i.placeId === 'sample-pho-house-chinatown'))!;
+    const pho = day.items.find((i) => i.placeId === 'sample-pho-house-chinatown')!;
+    expect(day.date).toBe('2026-11-19');
+    expect(minutes(pho.start)).toBeGreaterThan(minutes('17:00'));
+    expect(itinerary.unscheduled).toEqual([]);
+    expect(JSON.stringify(itinerary)).not.toMatch(/safety/i);
     expect(validateItinerary(itinerary, request, data)).toEqual([]);
   });
 
+  it('builds a trip that lands after dark for a hotel in the Seaport, which the removed rules refused', () => {
+    const request = validTripRequest({
+      arrival: '2026-11-18T17:00',
+      hotel: {
+        ...validTripRequest().hotel,
+        lat: 42.3519,
+        lng: -71.0446,
+        nearestStationId: '',
+        walkMinutesToStation: 0,
+      },
+    });
+    const itinerary = plan(baseSelection(), request);
+    const [airport, toHotel, checkIn] = itinerary.days[0]!.items;
+    expect(airport).toMatchObject({ kind: 'airport', start: '17:00' });
+    expect(toHotel?.kind).toBe('transit');
+    expect(checkIn).toMatchObject({ kind: 'hotel' });
+    expect(stops(itinerary).length).toBeGreaterThan(0);
+    expect(validateItinerary(itinerary, request, sample)).toEqual([]);
+  });
+});
+
+describe('the last train (US4.7)', () => {
   it('rearranges a day so the last stop does not miss the last train (AC4.7.2)', () => {
     const data = sampleDataWith((files) => {
       line(files, 'red').lastTrain = '11:00';
@@ -191,16 +183,18 @@ describe('safety and the last train (US4.3, US4.4, US4.7)', () => {
     const data = sampleDataWith((files) => {
       line(files, 'blue').lastTrain = '05:20';
     });
-    expect(() => plan(baseSelection(), validTripRequest(), data)).toThrow(NoSafePlanError);
+    expect(() => plan(baseSelection(), validTripRequest(), data)).toThrow(NoPlanError);
   });
 });
 
-describe('guidance, disclaimer and departure (US4.5)', () => {
-  it('gives each day safety guidance and the plan a guidance-not-guarantee disclaimer (AC4.5.1, AC4.5.2)', () => {
-    const itinerary = plan(baseSelection());
-    for (const day of itinerary.days) expect(day.safetyGuidance.length).toBeGreaterThan(0);
-    expect(itinerary.disclaimer).toContain(DISCLAIMER);
-    expect(itinerary.disclaimer).toContain('SAMPLE data'); // the bundled data is not hand-checked
+describe('the sample-data disclaimer and departure', () => {
+  it('warns that the plan was built from sample data, and only then', () => {
+    expect(plan(baseSelection()).disclaimer).toBe(SAMPLE_DATA_WARNING); // the bundled data is not hand-checked
+    const checked = sampleDataWith((files) => {
+      files.places.sample = false;
+      files.transit.sample = false;
+    });
+    expect(plan(baseSelection(), validTripRequest(), checked)).not.toHaveProperty('disclaimer');
   });
 
   it('leaves for an early flight as late as still reaches the airport in time', () => {
@@ -347,14 +341,15 @@ describe('stops inside opening hours (US7.3, FR12)', () => {
     expect(validateItinerary(itinerary, noWishlist, data)).toEqual([]);
   });
 
-  it('waits at the door when leaving later would break a safety rule', () => {
+  it('waits at the door when leaving later would miss the last train', () => {
     const data = sampleDataWith((files) => {
-      area(files, 'revere-beach').avoidAfter = '11:00';
+      line(files, 'blue').lastTrain = '11:00';
       hoursOf(files, 'sample-bakery-back-bay').thu = [['14:00', '19:00']];
     });
     const request = validTripRequest({ wishlist: ['Revere Beach', 'Sample Bakery'] });
     const itinerary = plan(oneDay(THURSDAY, ['revere-beach', 'sample-bakery-back-bay']), request, data);
-    // Staying at the beach until about 13:15 is not allowed after 11:00, so the traveler leaves at once and waits.
+    // Staying at the beach until about 13:15 would miss the last Blue Line train at 11:00, so the traveler leaves
+    // at once and waits at the bakery.
     expect(timeline(itinerary, THURSDAY)).toEqual([
       '09:00-09:26 transit',
       '09:26-10:11 revere-beach',

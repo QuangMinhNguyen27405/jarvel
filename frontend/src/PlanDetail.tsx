@@ -13,10 +13,16 @@ function StepDot({ status }: { status: AgentStatus }) {
   return null;
 }
 
-/** The five build steps as stops on a route; the solid line runs to the last step that started. */
+/** The build steps as stops on a route; the solid line runs to the last step that started. */
 function RouteLine({ progress }: { progress: AgentProgress[] | undefined }) {
   const { steps, reached } = buildProgress(progress);
-  const style = { '--reached': `${Math.max(reached, 0) * 20}%` } as CSSProperties;
+  // Each step has an equal share of the width; the line starts and ends at the middle of the first and last one.
+  const share = 100 / steps.length;
+  const style = {
+    '--steps': steps.length,
+    '--inset': `${share / 2}%`,
+    '--reached': `${Math.max(reached, 0) * share}%`,
+  } as CSSProperties;
   return (
     <div className="route-line" style={style}>
       <ol className="route-steps">
@@ -34,14 +40,14 @@ function RouteLine({ progress }: { progress: AgentProgress[] | undefined }) {
 }
 
 function Building({ plan }: { plan: PlanRecord }) {
-  const { reached } = buildProgress(plan.progress);
+  const { steps, reached } = buildProgress(plan.progress);
   return (
     <section className="card build" aria-labelledby="build-title">
       <div className="build-head">
         <h2 id="build-title" className="card-title">
           {plan.status === 'QUEUED' ? 'Waiting to start' : 'Building your plan'}
         </h2>
-        {reached >= 0 && <span className="build-count">{reached + 1} of 5</span>}
+        {reached >= 0 && <span className="build-count">{`${reached + 1} of ${steps.length}`}</span>}
       </div>
       <RouteLine progress={plan.progress} />
     </section>
