@@ -150,6 +150,43 @@ describe('no safety rules in this version (removed on request, Nov 16)', () => {
   });
 });
 
+describe('a flight that lands late in the evening', () => {
+  const timelineOf = (itinerary: Itinerary, date: string): string[] =>
+    itinerary.days.find((d) => d.date === date)!.items.map((i) => `${i.start}-${i.end} ${i.placeId ?? i.kind}`);
+
+  it('ends the first day with the check-in, even after the back-at-hotel time, and plans the other days', () => {
+    // Landing at 21:00 means checking in at 22:25, after the 21:30 back-at-hotel time. Before this was fixed, a
+    // "Back at the hotel" line at 22:25 made the final check refuse every trip that landed after about 20:00.
+    const request = validTripRequest({ arrival: '2026-11-18T21:00' });
+    const itinerary = plan(baseSelection(), request);
+    expect(timelineOf(itinerary, '2026-11-18')).toEqual([
+      '21:00-21:30 airport',
+      '21:30-21:55 transit',
+      '21:55-22:25 hotel',
+    ]);
+    expect(stops(itinerary).map((stop) => stop.placeId)).toEqual(
+      expect.arrayContaining(['boston-public-library', 'new-england-aquarium', 'harvard-yard']),
+    );
+    expect(validateItinerary(itinerary, request, sample)).toEqual([]);
+  });
+
+  it('still ends a day that has stops, and a free day, with "Back at" the hotel', () => {
+    const itinerary = plan({ days: [{ date: '2026-11-19', placeIds: ['new-england-aquarium'] }] });
+    expect(itinerary.days[1]!.items.at(-1)).toMatchObject({ kind: 'hotel', title: expect.stringMatching(/^Back at /) });
+    const free = plan({ days: [] }, validTripRequest({ wishlist: [] }));
+    expect(timelineOf(free, '2026-11-19')).toEqual(['09:00-09:00 hotel']);
+  });
+
+  it.each(['23:00', '23:30', '23:59'])(
+    'fails as "no plan", not as a crash, when landing at %s leaves no time to check in before midnight',
+    (time) => {
+      const request = validTripRequest({ arrival: `2026-11-18T${time}` });
+      expect(() => plan(baseSelection(), request)).toThrow(NoPlanError);
+      expect(() => plan(baseSelection(), request)).toThrow(/too late to reach your hotel and check in before midnight/);
+    },
+  );
+});
+
 describe('the last train (US4.7)', () => {
   it('rearranges a day so the last stop does not miss the last train (AC4.7.2)', () => {
     const data = sampleDataWith((files) => {

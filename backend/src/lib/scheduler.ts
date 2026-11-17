@@ -56,6 +56,8 @@ export const MAX_WAIT_FOR_OPENING_MINUTES = 30;
 /** Leaving later for a place that is not open yet is accepted when it starts the visit at most this late. */
 export const LATE_START_TOLERANCE_MINUTES = 15;
 
+const LANDS_TOO_LATE = 'You land too late to reach your hotel and check in before midnight.';
+
 export class NoPlanError extends Error {
   constructor(message: string) {
     super(message);
@@ -283,6 +285,9 @@ function openDay(trip: TripContext, date: string): DayState {
     };
   }
   const land = trip.arrival.minutes;
+  // No item may run past midnight. A flight that lands too late to reach the hotel and check in the same evening
+  // cannot be planned; it fails with a plain reason instead of a time that does not exist.
+  if (land + ARRIVAL_MINUTES >= 24 * 60) throw new NoPlanError(LANDS_TOO_LATE);
   const arrive = fixedSlot(
     'airport',
     land,
@@ -297,6 +302,8 @@ function openDay(trip: TripContext, date: string): DayState {
     throw new NoPlanError(
       `There is no public transport route from the airport to your hotel after you land (${toHotel.reason}).`,
     );
+  const ready = toHotel.value.cursor + CHECK_IN_MINUTES;
+  if (ready >= 24 * 60) throw new NoPlanError(LANDS_TOO_LATE);
   const checkIn = fixedSlot(
     'hotel',
     toHotel.value.cursor,
@@ -306,7 +313,6 @@ function openDay(trip: TripContext, date: string): DayState {
     'arrival',
     hotelPoint(trip),
   );
-  const ready = toHotel.value.cursor + CHECK_IN_MINUTES;
   return { cursor: Math.max(ready, trip.dayStart), location: trip.hotel, slots: [...toHotel.value.slots, checkIn] };
 }
 
@@ -322,6 +328,10 @@ function closeDay(trip: TripContext, date: string, state: DayState): Step<Slot[]
   if (hasStops && home.value.cursor > trip.dayEnd) return { ok: false, reason: UNSCHEDULED_REASONS.noFit };
   if (!isLast || !trip.airport) {
     if (isLast && home.value.cursor > trip.departure.minutes) return { ok: false, reason: UNSCHEDULED_REASONS.noFit };
+    // An arrival day with no stops ends with the check-in: the traveler never left the hotel, so there is no
+    // "Back at the hotel" to add. After a late flight that line would be past the back-at-hotel time, and the final
+    // check would refuse the whole plan for it.
+    if (!isLast && !hasStops && state.slots.length > 0) return { ok: true, value: home.value.slots };
     const marker = fixedSlot(
       'hotel',
       home.value.cursor,
